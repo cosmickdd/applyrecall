@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
-import { ArrowRight, Lock, Mail, User, School, Calendar, AlertCircle } from 'lucide-react';
+import { ArrowRight, Lock, Mail, User, School, Calendar, AlertCircle, CheckCircle2, RotateCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function SignUpPage() {
-  const { signUp, isConfigured } = useAuth();
+  const { signUp, resendConfirmationEmail, isConfigured, user, loading: authLoading } = useAuth();
   const [fullName, setFullName] = useState('');
   const [college, setCollege] = useState('');
   const [gradYear, setGradYear] = useState('');
@@ -16,7 +16,16 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
   const router = useRouter();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !authLoading) {
+      router.push('/');
+    }
+  }, [user, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +55,24 @@ export default function SignUpPage() {
     }
   };
 
+  const handleResend = async () => {
+    if (!email) return;
+    try {
+      setResendLoading(true);
+      setResendStatus(null);
+      const res = await resendConfirmationEmail(email);
+      if (res?.error) {
+        setResendStatus(`Error: ${res.error}`);
+      } else {
+        setResendStatus('A new confirmation email has been dispatched. Please check your inbox and spam folder.');
+      }
+    } catch (err: any) {
+      setResendStatus('Failed to resend confirmation email.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-brand-soft flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md bg-brand-surface border border-edge-default rounded-card shadow-card p-8 space-y-6">
@@ -72,17 +99,54 @@ export default function SignUpPage() {
         )}
 
         {success ? (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-btn text-center space-y-3">
-            <h3 className="text-sm font-semibold text-status-success">Account Created Successfully!</h3>
-            <p className="text-xs text-ink-secondary">
-              If email verification is enabled on your Supabase project, please check your inbox to confirm your email address.
-            </p>
-            <Link
-              href="/login"
-              className="inline-block py-2 px-4 bg-brand-blue text-white text-xs font-semibold rounded-btn"
-            >
-              Go to Sign In →
-            </Link>
+          <div className="p-6 bg-brand-surface border border-brand-blue/20 rounded-card text-center space-y-4 animate-fade">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-brand-blue flex items-center justify-center mx-auto">
+              <Mail className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-ink-primary">Verify your email address</h3>
+              <p className="text-xs text-ink-secondary leading-relaxed">
+                We sent a confirmation link to <span className="font-semibold text-ink-primary">{email}</span>.
+              </p>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-btn text-left text-xs text-amber-900 space-y-1.5">
+              <p className="font-semibold text-[11px] uppercase tracking-wider text-amber-800">
+                Important Setup Tip:
+              </p>
+              <p className="text-[11px] text-amber-800 leading-normal">
+                If clicking the link in the email said <strong>"Site can't be reached"</strong>, your Supabase project's <em>Site URL</em> needs to point to your live frontend or dev URL.
+              </p>
+              <p className="text-[11px] text-amber-700">
+                You can also disable <em>"Confirm email"</em> in your Supabase Dashboard to log in immediately without confirmation!
+              </p>
+            </div>
+
+            {resendStatus && (
+              <p className="text-xs p-2.5 bg-blue-50 border border-blue-200 text-brand-blue rounded-btn font-medium">
+                {resendStatus}
+              </p>
+            )}
+
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resendLoading}
+                className="w-full py-2 px-4 bg-brand-surface border border-edge-default hover:bg-brand-soft text-ink-primary text-xs font-semibold rounded-btn flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${resendLoading ? 'animate-spin' : ''}`} />
+                <span>{resendLoading ? 'Resending email...' : 'Resend confirmation email'}</span>
+              </button>
+
+              <Link
+                href="/login"
+                className="block w-full py-2 px-4 bg-brand-blue hover:bg-brand-blue/90 text-white text-xs font-semibold rounded-btn transition-colors"
+              >
+                Go to Sign In →
+              </Link>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">

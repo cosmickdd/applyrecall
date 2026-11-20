@@ -14,7 +14,8 @@ interface AuthContextType {
   loading: boolean;
   isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
-  signUp: (email: string, password: string, metadata?: Record<string, any>) => Promise<{ error?: string; user?: any }>;
+  signUp: (email: string, password: string, metadata?: Record<string, any>) => Promise<{ error?: string; user?: any; session?: any }>;
+  resendConfirmationEmail: (email: string) => Promise<{ error?: string; success?: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -28,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
   isConfigured: false,
   signIn: async () => ({}),
   signUp: async () => ({}),
+  resendConfirmationEmail: async () => ({}),
   signOut: async () => {},
   refreshProfile: async () => {},
 });
@@ -133,11 +135,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isSupabaseConfigured) {
       return { error: 'Supabase authentication is not configured.' };
     }
+    const emailRedirectTo = typeof window !== 'undefined'
+      ? `${window.location.origin}/auth/callback`
+      : undefined;
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: metadata || {},
+        emailRedirectTo,
       },
     });
     if (error) {
@@ -165,7 +172,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await loadUserProfile();
       router.push('/');
     }
-    return { user: data.user };
+    return { user: data.user, session: data.session };
+  };
+
+  const resendConfirmationEmail = async (email: string) => {
+    if (!isSupabaseConfigured) {
+      return { error: 'Supabase authentication is not configured.' };
+    }
+    const emailRedirectTo = typeof window !== 'undefined'
+      ? `${window.location.origin}/auth/callback`
+      : undefined;
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo,
+      },
+    });
+    if (error) {
+      return { error: error.message };
+    }
+    return { success: true };
   };
 
   const signOut = async () => {
@@ -193,6 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isConfigured: isSupabaseConfigured,
         signIn,
         signUp,
+        resendConfirmationEmail,
         signOut,
         refreshProfile: loadUserProfile,
       }}

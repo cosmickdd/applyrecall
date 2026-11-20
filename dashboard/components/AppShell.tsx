@@ -10,7 +10,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { token, loading, isConfigured } = useAuth();
 
-  const isAuthPage = pathname === '/login' || pathname === '/signup';
+  const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname?.startsWith('/auth/');
 
   useEffect(() => {
     if (!loading && isConfigured && !token && !isAuthPage) {
