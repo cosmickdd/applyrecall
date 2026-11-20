@@ -1,15 +1,33 @@
 // ApplyRecall Dashboard API Client
+// Supports Supabase JWT or secure device tokens; respects environment configuration.
 
-const API_BASE = typeof window !== 'undefined' ? '/api' : 'http://127.0.0.1:8000/api';
+const API_BASE = typeof window !== 'undefined'
+  ? (process.env.NEXT_PUBLIC_API_URL || '/api')
+  : (process.env.BACKEND_INTERNAL_URL || 'http://127.0.0.1:8000/api');
 
-const DEFAULT_AUTH_HEADER = {
-  'Authorization': 'Bearer 00000000-0000-0000-0000-000000000001',
-  'Content-Type': 'application/json'
-};
+function getAuthHeader(): Record<string, string> {
+  if (typeof window !== 'undefined') {
+    // Check localStorage for authenticated user token or device token
+    const token = localStorage.getItem('applyrecall_token');
+    if (token) {
+      if (token.startsWith('eyJ')) {
+        // Supabase JWT
+        return { 'Authorization': `Bearer ${token}` };
+      }
+      // Opaque device token
+      return { 'X-Device-Token': token };
+    }
+  }
+
+  // Development mode fallback
+  const devToken = process.env.NEXT_PUBLIC_DEV_USER_ID || '00000000-0000-0000-0000-000000000001';
+  return { 'Authorization': `Bearer ${devToken}` };
+}
 
 async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = {
-    ...DEFAULT_AUTH_HEADER,
+    'Content-Type': 'application/json',
+    ...getAuthHeader(),
     ...(options.headers || {})
   };
 
@@ -128,6 +146,10 @@ export const api = {
   verifyPairingCode: (code: string, deviceType: 'extension' | 'telegram') => fetcher<any>('/auth/pair/verify', {
     method: 'POST',
     body: JSON.stringify({ code, device_type: deviceType })
+  }),
+  getConnectedDevices: () => fetcher<any[]>('/auth/devices'),
+  revokeDevice: (id: string) => fetcher<any>(`/auth/devices/${id}`, {
+    method: 'DELETE'
   }),
 
   // Telegram simulation

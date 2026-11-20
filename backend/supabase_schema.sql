@@ -1,5 +1,5 @@
--- Supabase PostgreSQL Schema for ApplyRecall
--- Enable UUID extension if not already enabled
+-- Supabase PostgreSQL Schema for ApplyRecall (Production Schema v1.1.0)
+-- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. Profiles Table
@@ -107,15 +107,19 @@ CREATE TABLE IF NOT EXISTS application_events (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. Reminders Table
+-- 8. Reminders Table (with retry lifecycle and backoff)
 CREATE TABLE IF NOT EXISTS reminders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
     application_id UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
     reminder_at TIMESTAMPTZ NOT NULL,
     type TEXT DEFAULT 'follow_up',
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'snoozed', 'cancelled')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'snoozed', 'cancelled')),
     sent_at TIMESTAMPTZ,
+    attempts INTEGER DEFAULT 0,
+    last_attempt_at TIMESTAMPTZ,
+    error_message TEXT,
+    next_retry_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -129,7 +133,7 @@ CREATE TABLE IF NOT EXISTS telegram_connections (
     is_active BOOLEAN DEFAULT TRUE
 );
 
--- 10. Pairing Codes Table (for Chrome Extension & Telegram)
+-- 10. Pairing Codes Table (Stores SHA-256 hash of one-time codes)
 CREATE TABLE IF NOT EXISTS pairing_codes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
@@ -137,6 +141,24 @@ CREATE TABLE IF NOT EXISTS pairing_codes (
     device_type TEXT NOT NULL CHECK (device_type IN ('extension', 'telegram')),
     expires_at TIMESTAMPTZ NOT NULL,
     used_at TIMESTAMPTZ
+);
+
+-- 11. Device Connections Table (Stores SHA-256 hash of device tokens)
+CREATE TABLE IF NOT EXISTS device_connections (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    device_type TEXT NOT NULL CHECK (device_type IN ('extension', 'telegram')),
+    device_name TEXT,
+    token_hash TEXT NOT NULL UNIQUE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ
+);
+
+-- 12. Telegram Processed Updates Table (Deduplication)
+CREATE TABLE IF NOT EXISTS telegram_processed_updates (
+    update_id BIGINT PRIMARY KEY,
+    processed_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes for optimal performance
@@ -149,6 +171,8 @@ CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_app_id ON application_events(application_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_chat_id ON telegram_connections(chat_id);
 CREATE INDEX IF NOT EXISTS idx_pairing_codes_hash ON pairing_codes(code_hash, expires_at);
+CREATE INDEX IF NOT EXISTS idx_device_token_hash ON device_connections(token_hash);
+CREATE INDEX IF NOT EXISTS idx_device_user_id ON device_connections(user_id);
 
 -- Row Level Security (RLS)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -161,8 +185,9 @@ ALTER TABLE application_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE telegram_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pairing_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_connections ENABLE ROW LEVEL SECURITY;
 
--- Sample RLS policy pattern: Users can only select/insert/update their own rows
+-- Standard user ownership RLS policies
 CREATE POLICY "Users can access their own profile" ON profiles
     FOR ALL USING (auth.uid() = user_id);
 
@@ -191,4 +216,7 @@ CREATE POLICY "Users can access their own telegram connections" ON telegram_conn
     FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can access their own pairing codes" ON pairing_codes
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can access their own device connections" ON device_connections
     FOR ALL USING (auth.uid() = user_id);

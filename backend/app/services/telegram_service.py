@@ -1,3 +1,4 @@
+import hashlib
 import re
 import httpx
 from datetime import datetime, timezone, timedelta
@@ -91,19 +92,17 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         parts = clean_text.split()
         if len(parts) < 2:
             return "Please provide your one-time code: <code>/link YOUR_CODE</code>"
-        code = parts[1].strip()
+        code = parts[1].strip().upper()
+        code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
         
-        # Verify code
+        # Verify code using the hash
         cursor = await conn.execute(
-            "SELECT user_id, expires_at, used_at FROM pairing_codes WHERE code_hash = ? AND device_type = 'telegram'",
-            (code,)
+            "SELECT id, user_id, expires_at, used_at FROM pairing_codes WHERE code_hash = ? AND device_type = 'telegram' AND used_at IS NULL",
+            (code_hash,)
         )
         pairing = await cursor.fetchone()
         if not pairing:
             return "❌ Invalid or unrecognized code. Please generate a new pairing code from your Dashboard Settings."
-            
-        if pairing["used_at"]:
-            return "❌ This code has already been used. Please generate a fresh code from your dashboard."
             
         now_dt = datetime.now(timezone.utc)
         expires_dt = datetime.fromisoformat(pairing["expires_at"].replace("Z", "+00:00"))
@@ -111,16 +110,22 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
             return "⚠️ This pairing code has expired. Please generate a new one from your dashboard."
             
         matched_user_id = pairing["user_id"]
+        now = now_iso()
         
-        # Mark code used
-        await conn.execute("UPDATE pairing_codes SET used_at = ? WHERE code_hash = ?", (now_iso(), code))
+        # Mark code used atomically
+        result = await conn.execute(
+            "UPDATE pairing_codes SET used_at = ? WHERE id = ? AND used_at IS NULL",
+            (now, pairing["id"])
+        )
+        if result.rowcount == 0:
+            return "❌ This code has already been used. Please generate a fresh code from your dashboard."
         
         # Insert or update telegram connection
         await conn.execute("""
         INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
         VALUES (?, ?, ?, ?, 1)
         ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1, connected_at = excluded.connected_at;
-        """, (new_uuid(), matched_user_id, str(chat_id), now_iso()))
+        """, (new_uuid(), matched_user_id, str(chat_id), now))
         await conn.commit()
         
         return "✅ <b>Account successfully linked!</b>\nApplyRecall is now connected to your personal application memory."
@@ -235,14 +240,24 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         if not matched_status:
             return f"Unknown status '{new_status_raw}'. Valid statuses are: Saved, Applied, Assessment, Interview, Offer, Rejected, Withdrawn."
             
+        # Find matching applications — handle ambiguous matches
         cursor = await conn.execute(
-            "SELECT id, company, position, status FROM applications WHERE user_id = ? AND lower(company) LIKE ? LIMIT 1",
+            "SELECT id, company, position, status FROM applications WHERE user_id = ? AND lower(company) LIKE ?",
             (user_id, f"%{target_company.lower()}%")
         )
-        app = await cursor.fetchone()
-        if not app:
+        apps = await cursor.fetchall()
+        
+        if not apps:
             return f"I couldn't find an application for '{target_company}'. Please check the company name."
-            
+        
+        if len(apps) > 1:
+            lines = [f"Found {len(apps)} applications matching '{target_company}':\n"]
+            for i, a in enumerate(apps, 1):
+                lines.append(f"{i}. <b>{a['company']}</b> — {a['position']} (<i>{a['status']}</i>)")
+            lines.append(f"\nPlease be more specific, e.g.: \"Update {apps[0]['company']} {apps[0]['position']} to {matched_status}\"")
+            return "\n".join(lines)
+
+        app = apps[0]
         old_status = app["status"]
         app_id = app["id"]
         

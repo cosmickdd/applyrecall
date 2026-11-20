@@ -1,5 +1,5 @@
 // ApplyRecall Extension Popup Logic
-// Connects to backend, manages context, matches answers, triggers safe autofill.
+// Connects to backend with secure device token, tab-scoped context, answers matching, and safe autofill.
 
 const API_BASE = "http://localhost:8000/api";
 
@@ -39,12 +39,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const connectBtn = document.getElementById("connect-btn");
   const devQuickConnectBtn = document.getElementById("dev-quick-connect-btn");
 
+  let activeTabId = null;
   let currentContext = {
-    token: null,
+    deviceToken: null,
     profile: null,
     job: null,
     application: null,
-    fields: []
+    fields: [],
+    essayFields: []
   };
 
   function showToast(msg, type = "success") {
@@ -56,19 +58,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     }, 4000);
   }
 
+  // Get current active tab
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (activeTab) {
+    activeTabId = activeTab.id;
+  }
+
+  // Storage keys are tab-specific for job & application
+  const tabAppKey = activeTabId ? `tab_${activeTabId}_application` : "active_application";
+  const tabSubmitKey = activeTabId ? `tab_${activeTabId}_submission_pending` : "submission_pending";
+
   // Load storage state
   chrome.storage.local.get(
-    ["user_token", "user_profile", "active_application", "submission_pending"],
+    ["device_token", "user_profile", tabAppKey, tabSubmitKey],
     async (res) => {
-      if (res.user_token) {
-        currentContext.token = res.user_token;
+      if (res.device_token) {
+        currentContext.deviceToken = res.device_token;
         currentContext.profile = res.user_profile;
-        currentContext.application = res.active_application;
+        currentContext.application = res[tabAppKey] || null;
 
         renderConnectedState();
 
-        // Check if submission is pending
-        if (res.submission_pending) {
+        // Check if submission is pending for THIS tab
+        if (res[tabSubmitKey]) {
           stateSubmission.classList.remove("hidden");
         }
 
@@ -80,6 +92,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   );
 
+  function getAuthHeaders() {
+    const headers = { "Content-Type": "application/json" };
+    if (currentContext.deviceToken) {
+      headers["X-Device-Token"] = currentContext.deviceToken;
+    }
+    return headers;
+  }
+
   function renderConnectedState() {
     stateNotConnected.classList.add("hidden");
     stateConnected.classList.remove("hidden");
@@ -87,7 +107,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     connectionBadge.className = "badge badge-success";
 
     if (currentContext.profile) {
-      userInfoFooter.textContent = currentContext.profile.full_name || currentContext.profile.email;
+      userInfoFooter.textContent = currentContext.profile.full_name || currentContext.profile.email || "ApplyRecall Student";
     }
   }
 
@@ -101,12 +121,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Active Tab Inspection
   async function inspectActiveTab() {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab || !tab.id) return;
+    if (!activeTabId) return;
 
-      // Extract Job Context
-      chrome.tabs.sendMessage(tab.id, { action: "GET_JOB_CONTEXT" }, (response) => {
+    try {
+      // 1. Extract Job Context
+      chrome.tabs.sendMessage(activeTabId, { action: "GET_JOB_CONTEXT" }, (response) => {
         if (chrome.runtime.lastError || !response || !response.job) {
           jobCompanyEl.textContent = "No Job Detected";
           jobPositionEl.textContent = "Open a job listing or application form.";
@@ -124,26 +143,29 @@ document.addEventListener("DOMContentLoaded", async () => {
           jobLocationEl.classList.remove("hidden");
         }
 
-        if (currentContext.application && currentContext.application.company.toLowerCase() === job.company.toLowerCase()) {
+        if (currentContext.application && currentContext.application.company.toLowerCase() === (job.company || "").toLowerCase()) {
           startAppBtn.textContent = "Application In Progress ✓";
           startAppBtn.disabled = true;
           startAppBtn.className = "btn btn-ghost btn-full";
         }
       });
 
-      // Inspect Fields
-      chrome.tabs.sendMessage(tab.id, { action: "INSPECT_FORM" }, (response) => {
+      // 2. Inspect Fields
+      chrome.tabs.sendMessage(activeTabId, { action: "INSPECT_FORM" }, async (response) => {
         if (!chrome.runtime.lastError && response && response.fields) {
           currentContext.fields = response.fields;
+          currentContext.essayFields = response.essayFields || [];
           detectedCountEl.textContent = `${response.count} fields detected`;
           detectedCountEl.className = "badge badge-blue";
 
-          // Auto-prefill new question input if a long-form prompt is detected on the page
-          const firstEssay = response.fields.find(f => f.isLongText && f.prompt);
-          if (firstEssay && !newQInput.value) {
-            newQInput.value = firstEssay.prompt;
-            if (firstEssay.currentValue) {
-              newAInput.value = firstEssay.currentValue;
+          // Unanswered Question Detection: find essay questions and check if any are unanswered
+          if (currentContext.essayFields.length > 0) {
+            const firstEssay = currentContext.essayFields[0];
+            if (!newQInput.value && firstEssay.prompt) {
+              newQInput.value = firstEssay.prompt;
+              if (firstEssay.currentValue) {
+                newAInput.value = firstEssay.currentValue;
+              }
             }
           }
         } else {
@@ -155,7 +177,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Connect Button handler
+  // Connect Button handler (Pairing with backend)
   connectBtn.addEventListener("click", async () => {
     const code = pairingCodeInput.value.trim().toUpperCase();
     if (!code || code.length !== 6) {
@@ -170,25 +192,29 @@ document.addEventListener("DOMContentLoaded", async () => {
       const resp = await fetch(`${API_BASE}/auth/pair/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code, device_type: "extension" })
+        body: JSON.stringify({
+          code: code,
+          device_type: "extension",
+          device_name: "Chrome Browser"
+        })
       });
 
       if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.detail || "Pairing failed");
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || "Pairing failed. Check the code.");
       }
 
       const data = await resp.json();
-      currentContext.token = data.token;
+      currentContext.deviceToken = data.token;
       currentContext.profile = data.profile;
 
       chrome.storage.local.set({
-        user_token: data.token,
+        device_token: data.token,
         user_profile: data.profile
       });
 
       renderConnectedState();
-      showToast("Your application memory is ready.");
+      showToast("Device paired securely with ApplyRecall.");
       await inspectActiveTab();
     } catch (err) {
       showToast(err.message, "error");
@@ -198,30 +224,52 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Quick Developer Connect handler
+  // Developer Quick Connect (dev mode only)
   devQuickConnectBtn.addEventListener("click", async () => {
     try {
       devQuickConnectBtn.textContent = "Connecting...";
-      const resp = await fetch(`${API_BASE}/profile`, {
-        headers: { "Authorization": "Bearer 00000000-0000-0000-0000-000000000001" }
+      // Generate code and verify atomically in dev
+      const genResp = await fetch(`${API_BASE}/auth/pair/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer 00000000-0000-0000-0000-000000000001"
+        },
+        body: JSON.stringify({ device_type: "extension" })
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        const token = "tok_00000000-0000-0000-0000-000000000001";
-        currentContext.token = token;
-        currentContext.profile = data.profile;
+
+      if (!genResp.ok) {
+        showToast("Backend not reachable or running in production mode.", "error");
+        return;
+      }
+
+      const genData = await genResp.json();
+      const verifyResp = await fetch(`${API_BASE}/auth/pair/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: genData.code,
+          device_type: "extension",
+          device_name: "Dev Extension"
+        })
+      });
+
+      if (verifyResp.ok) {
+        const verifyData = await verifyResp.json();
+        currentContext.deviceToken = verifyData.token;
+        currentContext.profile = verifyData.profile;
 
         chrome.storage.local.set({
-          user_token: token,
-          user_profile: data.profile
+          device_token: verifyData.token,
+          user_profile: verifyData.profile
         });
 
         renderConnectedState();
-        showToast("Connected to Alex Morgan profile.");
+        showToast("Connected to dev student profile.");
         await inspectActiveTab();
       }
     } catch (e) {
-      showToast("Backend not reachable at http://localhost:8000", "error");
+      showToast("Could not connect to backend at " + API_BASE, "error");
     } finally {
       devQuickConnectBtn.textContent = "Use Default Student Profile";
     }
@@ -238,10 +286,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       startAppBtn.textContent = "Saving Context...";
       const resp = await fetch(`${API_BASE}/applications`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${currentContext.token}`
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           company: currentContext.job.company,
           position: currentContext.job.position,
@@ -256,7 +301,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (resp.ok) {
         const app = await resp.json();
         currentContext.application = app;
-        chrome.storage.local.set({ active_application: app });
+
+        // Store per tab
+        const storageUpdate = {};
+        storageUpdate[tabAppKey] = app;
+        chrome.storage.local.set(storageUpdate);
 
         startAppBtn.textContent = "Application In Progress ✓";
         startAppBtn.disabled = true;
@@ -268,20 +317,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Autofill this application
+  // Autofill this application safely
   autofillBtn.addEventListener("click", async () => {
     if (!currentContext.profile) {
       showToast("No profile loaded. Please connect your account.", "error");
       return;
     }
+    if (!activeTabId) return;
 
     autofillBtn.textContent = "Autofilling...";
     autofillBtn.disabled = true;
 
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab || !tab.id) return;
-
       // 1. Check for long-form answers in library via /api/answers/match
       const matchedAnswers = [];
       const company = currentContext.job ? currentContext.job.company : "";
@@ -292,10 +339,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           try {
             const matchResp = await fetch(`${API_BASE}/answers/match`, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${currentContext.token}`
-              },
+              headers: getAuthHeaders(),
               body: JSON.stringify({
                 question: field.prompt,
                 company: company,
@@ -319,18 +363,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       }
 
-      // 2. Dispatch EXECUTE_AUTOFILL to content script
+      // 2. Dispatch EXECUTE_AUTOFILL to content script (forceOverwrite: false to protect existing values)
       chrome.tabs.sendMessage(
-        tab.id,
+        activeTabId,
         {
           action: "EXECUTE_AUTOFILL",
           profile: currentContext.profile,
-          matchedAnswers: matchedAnswers
+          matchedAnswers: matchedAnswers,
+          forceOverwrite: false
         },
         (result) => {
           if (!chrome.runtime.lastError && result) {
             resultsPanel.classList.remove("hidden");
-            resultsCountBadge.textContent = `${result.filledCount} filled`;
+            const skipNote = result.skippedCount > 0 ? ` (${result.skippedCount} existing preserved)` : "";
+            resultsCountBadge.textContent = `${result.filledCount} filled${skipNote}`;
             filledList.innerHTML = "";
 
             if (result.filledDetails && result.filledDetails.length > 0) {
@@ -341,7 +387,15 @@ document.addEventListener("DOMContentLoaded", async () => {
               });
             }
 
-            showToast(`Autofilled ${result.filledCount} fields safely.`);
+            if (result.skippedDetails && result.skippedDetails.length > 0) {
+              result.skippedDetails.forEach((item) => {
+                const li = document.createElement("li");
+                li.innerHTML = `<span class="text-muted">${item.label} (preserved)</span><span class="text-muted text-xs">skipped</span>`;
+                filledList.appendChild(li);
+              });
+            }
+
+            showToast(`Safely populated ${result.filledCount} fields.`);
           } else {
             showToast("Could not autofill on this page.", "error");
           }
@@ -379,10 +433,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const resp = await fetch(`${API_BASE}/answers`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${currentContext.token}`
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           question: q,
           answer: a,
@@ -398,7 +449,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         newQInput.value = "";
         newAInput.value = "";
       } else {
-        const err = await resp.json();
+        const err = await resp.json().catch(() => ({}));
         showToast(err.detail || "Could not save answer.", "error");
       }
     } catch (e) {
@@ -409,18 +460,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Submission confirmation
+  // Submission confirmation (Tab-scoped)
   confirmAppliedBtn.addEventListener("click", async () => {
     if (!currentContext.application) {
-      // Create quick application record if not already created
       const comp = currentContext.job ? currentContext.job.company : "Target Company";
       const pos = currentContext.job ? currentContext.job.position : "Role";
       const resp = await fetch(`${API_BASE}/applications`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${currentContext.token}`
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           company: comp,
           position: pos,
@@ -438,10 +485,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const shouldSchedule = reminderCheck.checked;
         const resp = await fetch(`${API_BASE}/applications/${currentContext.application.id}/confirm-applied`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${currentContext.token}`
-          },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             create_reminder: shouldSchedule,
             reminder_days: 7
@@ -450,9 +494,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         if (resp.ok) {
           stateSubmission.classList.add("hidden");
-          chrome.storage.local.remove(["submission_pending"]);
-          chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG" });
-          showToast("Application saved. I'll help you keep track of what happens next.");
+          // Clear tab-specific flag
+          chrome.storage.local.remove([tabSubmitKey]);
+          chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG", tabId: activeTabId });
+          showToast("Application marked as Applied. Follow-up reminder active.");
         }
       } catch (e) {
         showToast("Could not confirm application.", "error");
@@ -462,7 +507,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   dismissSubmissionBtn.addEventListener("click", () => {
     stateSubmission.classList.add("hidden");
-    chrome.storage.local.remove(["submission_pending"]);
-    chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG" });
+    chrome.storage.local.remove([tabSubmitKey]);
+    chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG", tabId: activeTabId });
   });
 });

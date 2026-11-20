@@ -28,15 +28,15 @@ async def list_reminders(
     today_end = (datetime.now(timezone.utc).replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
     
     if tab == "today":
-        query += " AND r.status IN ('pending', 'snoozed') AND r.reminder_at <= ?"
+        query += " AND r.status IN ('pending', 'snoozed', 'processing') AND r.reminder_at <= ?"
         params.append(today_end)
     elif tab == "upcoming":
-        query += " AND r.status IN ('pending', 'snoozed') AND r.reminder_at > ?"
+        query += " AND r.status IN ('pending', 'snoozed', 'processing') AND r.reminder_at > ?"
         params.append(today_end)
     elif tab == "snoozed":
         query += " AND r.status = 'snoozed'"
     elif tab == "completed":
-        query += " AND r.status = 'completed'"
+        query += " AND r.status IN ('sent', 'completed')"
     elif status:
         query += " AND r.status = ?"
         params.append(status)

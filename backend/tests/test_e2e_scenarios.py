@@ -6,12 +6,14 @@ from app.main import app
 from app.config import settings
 from app.database import init_db, now_iso, new_uuid
 
+DEV_USER_ID = "00000000-0000-0000-0000-000000000001"
+
 def test_full_cross_surface_workflow():
     async def _run():
         await init_db()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            headers = {"Authorization": f"Bearer {settings.DEFAULT_USER_ID}"}
+            headers = {"Authorization": f"Bearer {DEV_USER_ID}"}
             
             # 1. Health check
             r = await client.get("/health")
@@ -121,12 +123,20 @@ def test_full_cross_surface_workflow():
             assert "recruiting@datadoghq.com" in draft["mailto_url"]
             assert "mail.google.com" in draft["gmail_url"]
             
-            # 10. Dashboard summary and activity verification
+            # 10. Extension Device Pairing
+            r_ext_pair = await client.post("/api/auth/pair/generate", headers=headers, json={"device_type": "extension"})
+            ext_code = r_ext_pair.json()["code"]
+            r_ext_verify = await client.post("/api/auth/pair/verify", json={"code": ext_code, "device_type": "extension", "device_name": "Chrome Extension Test"})
+            assert r_ext_verify.status_code == 200
+            assert r_ext_verify.json()["success"] is True
+
+            # 11. Dashboard summary and activity verification
             r_dash = await client.get("/api/dashboard/summary", headers=headers)
             assert r_dash.status_code == 200
             dash = r_dash.json()
             assert dash["total_applications"] >= 4
             assert dash["interviews"] >= 2
             assert dash["telegram_connected"] is True
+            assert dash["extension_connected"] is True
             
     asyncio.run(_run())

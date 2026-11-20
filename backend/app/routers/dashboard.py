@@ -54,12 +54,20 @@ async def get_dashboard_summary(
     )
     telegram_connected = bool(await cursor_tg.fetchone())
     
-    # Extension connection check (used pairing code in past 30 days)
-    cursor_ext = await conn.execute(
-        "SELECT id FROM pairing_codes WHERE user_id = ? AND device_type = 'extension' AND used_at IS NOT NULL LIMIT 1",
+    # Extension connection check: check active device_connections or used pairing_codes
+    cursor_dev = await conn.execute(
+        "SELECT id FROM device_connections WHERE user_id = ? AND device_type = 'extension' AND is_active = 1 LIMIT 1",
         (user_id,)
     )
-    extension_connected = bool(await cursor_ext.fetchone())
+    dev_row = await cursor_dev.fetchone()
+    if dev_row:
+        extension_connected = True
+    else:
+        cursor_ext = await conn.execute(
+            "SELECT id FROM pairing_codes WHERE user_id = ? AND device_type = 'extension' AND used_at IS NOT NULL LIMIT 1",
+            (user_id,)
+        )
+        extension_connected = bool(await cursor_ext.fetchone())
     
     return DashboardSummaryResponse(
         total_applications=total,

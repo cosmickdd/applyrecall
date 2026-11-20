@@ -1,5 +1,5 @@
 // ApplyRecall Content Script
-// Inspects job context, detects application form fields, executes safe autofill, and monitors submission.
+// Inspects job context, detects application form fields, executes safe autofill without overwriting, and monitors submission.
 
 (function () {
   if (window.__applyrecall_injected) return;
@@ -95,7 +95,8 @@
 
     const sensitiveTerms = [
       "password", "pwd", "token", "otp", "secret", "cvv", "creditcard",
-      "cardnumber", "ssn", "socialsecurity", "bank", "routing", "captcha"
+      "cardnumber", "ssn", "socialsecurity", "bank", "routing", "captcha",
+      "salary_expectation", "pin", "passcode"
     ];
 
     if (type === "password" || type === "file") return true;
@@ -110,17 +111,14 @@
 
   // 3. Resolve Field Label or Prompt
   function getFieldPrompt(el) {
-    // 1. Associated label by 'for'
     if (el.id) {
       const lbl = document.querySelector(`label[for="${el.id}"]`);
       if (lbl && lbl.innerText.trim()) return lbl.innerText.trim();
     }
-    // 2. Enclosing label
     const parentLabel = el.closest("label");
     if (parentLabel && parentLabel.innerText.trim()) {
       return parentLabel.innerText.trim();
     }
-    // 3. aria-label or placeholder
     if (el.getAttribute("aria-label")) return el.getAttribute("aria-label").trim();
     if (el.placeholder) return el.placeholder.trim();
     if (el.name) return el.name.replace(/[-_]/g, " ").trim();
@@ -131,28 +129,37 @@
   function inspectPageFormFields() {
     const inputs = Array.from(document.querySelectorAll("input, textarea, select"));
     const actionableFields = [];
+    const essayFields = [];
 
     for (const el of inputs) {
       if (isSensitiveField(el)) continue;
       if (el.type === "hidden" || el.type === "submit" || el.type === "button") continue;
 
       const prompt = getFieldPrompt(el);
-      const isLongText = el.tagName.toLowerCase() === "textarea" || (el.type === "text" && (prompt.length > 30 || el.rows > 2));
+      const isLongText = el.tagName.toLowerCase() === "textarea" || (el.type === "text" && (prompt.length > 30 || (el.rows && el.rows > 2)));
+      const hasValue = !!(el.value && el.value.trim().length > 0);
 
-      actionableFields.push({
+      const fieldInfo = {
         id: el.id || "",
         name: el.name || "",
         type: el.type || el.tagName.toLowerCase(),
         prompt: prompt,
         isLongText: isLongText,
-        currentValue: el.value || ""
-      });
+        currentValue: el.value || "",
+        hasValue: hasValue
+      };
+
+      actionableFields.push(fieldInfo);
+
+      if (isLongText && prompt) {
+        essayFields.push(fieldInfo);
+      }
     }
 
-    return actionableFields;
+    return { fields: actionableFields, essayFields: essayFields };
   }
 
-  // 5. Fill Value and Trigger React/Angular/Vue change events
+  // 5. Fill Value safely and Trigger Events
   function setNativeValue(element, value) {
     const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
     const prototype = Object.getPrototypeOf(element);
@@ -169,17 +176,24 @@
     element.dispatchEvent(new Event('input', { bubbles: true }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Highlight populated field
+    // Verify assignment
+    const verified = element.value === value;
+
+    // Visual feedback
     element.style.outline = "2px solid #2142E7";
     element.style.backgroundColor = "#EEF2FF";
     element.style.transition = "background-color 0.3s, outline 0.3s";
+
+    return verified;
   }
 
-  // 6. Execute Autofill with Profile & Matched Answers
-  function executeAutofill(profile, matchedAnswers) {
+  // 6. Execute Safe Autofill (Respects existing values unless forceOverwrite is true)
+  function executeAutofill(profile, matchedAnswers, forceOverwrite = false) {
     const inputs = Array.from(document.querySelectorAll("input, textarea, select"));
     let filledCount = 0;
+    let skippedCount = 0;
     const filledDetails = [];
+    const skippedDetails = [];
 
     for (const el of inputs) {
       if (isSensitiveField(el)) continue;
@@ -247,13 +261,23 @@
       }
 
       if (fillVal) {
-        setNativeValue(el, fillVal);
-        filledCount++;
-        filledDetails.push({ label: matchedLabel, value: fillVal });
+        // Safe check: do NOT overwrite non-empty fields unless forceOverwrite is enabled
+        const existingVal = (el.value || "").trim();
+        if (existingVal && existingVal !== fillVal && !forceOverwrite) {
+          skippedCount++;
+          skippedDetails.push({ label: matchedLabel, existingValue: existingVal, reason: "field already has content" });
+          continue;
+        }
+
+        const success = setNativeValue(el, fillVal);
+        if (success) {
+          filledCount++;
+          filledDetails.push({ label: matchedLabel, value: fillVal });
+        }
       }
     }
 
-    return { filledCount, filledDetails };
+    return { filledCount, skippedCount, filledDetails, skippedDetails };
   }
 
   // 7. Monitor Submission
@@ -267,16 +291,16 @@
       const job = extractJobContext();
       sendResponse({ job });
     } else if (request.action === "INSPECT_FORM") {
-      const fields = inspectPageFormFields();
-      sendResponse({ fields, count: fields.length });
+      const result = inspectPageFormFields();
+      sendResponse({ fields: result.fields, essayFields: result.essayFields, count: result.fields.length });
     } else if (request.action === "EXECUTE_AUTOFILL") {
-      const result = executeAutofill(request.profile, request.matchedAnswers);
+      const result = executeAutofill(request.profile, request.matchedAnswers, !!request.forceOverwrite);
       sendResponse(result);
     } else if (request.action === "FILL_SINGLE_FIELD") {
       const el = document.getElementById(request.fieldId) || document.querySelector(`[name="${request.fieldName}"]`);
       if (el) {
-        setNativeValue(el, request.value);
-        sendResponse({ success: true });
+        const ok = setNativeValue(el, request.value);
+        sendResponse({ success: ok });
       } else {
         sendResponse({ success: false });
       }

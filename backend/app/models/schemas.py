@@ -92,7 +92,7 @@ class AnswerMatchResponse(BaseModel):
     matched: bool
     answer: Optional[AnswerResponse] = None
     confidence: float = 0.0
-    match_type: str = "none" # "exact", "keyword", "fuzzy", "none"
+    match_type: str = "none"  # "exact", "keyword", "fuzzy", "none"
     explanation: Optional[str] = None
 
 # Application Schemas
@@ -178,6 +178,8 @@ class ReminderResponse(BaseModel):
     type: str
     status: str
     sent_at: Optional[str] = None
+    attempts: Optional[int] = 0
+    error_message: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     company: Optional[str] = None
@@ -209,6 +211,7 @@ class VerifyPairingCodeRequest(BaseModel):
     code: str
     device_type: str = Field(..., pattern="^(extension|telegram)$")
     chat_id: Optional[str] = None
+    device_name: Optional[str] = None
 
 class VerifyPairingCodeResponse(BaseModel):
     success: bool
@@ -216,6 +219,15 @@ class VerifyPairingCodeResponse(BaseModel):
     token: str
     message: str
     profile: Optional[Dict[str, Any]] = None
+
+# Device Connection Schemas
+class DeviceConnectionResponse(BaseModel):
+    id: str
+    device_type: str
+    device_name: Optional[str] = None
+    is_active: int
+    created_at: Optional[str] = None
+    last_used_at: Optional[str] = None
 
 # Dashboard Schemas
 class DashboardSummaryResponse(BaseModel):

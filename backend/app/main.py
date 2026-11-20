@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,17 +16,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Backend API for ApplyRecall — The intelligent job application memory & assistant",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan
 )
 
-# CORS configuration
+# CORS configuration — specific origins, not wildcard
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allows web dashboard, chrome-extension:// origins, and local testing
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Device-Token", "X-Telegram-Bot-Api-Secret-Token"],
+    # Allow chrome-extension:// origins dynamically
+    allow_origin_regex=r"^chrome-extension://[a-z]{32}$",
 )
 
 # Mount all routers

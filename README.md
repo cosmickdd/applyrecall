@@ -1,204 +1,203 @@
 # ApplyRecall
 
-> **Apply once. Remember everything. Stay in control.**  
-> *AI-assisted job application management and automation platform.*
+> **Apply once. Remember everything. Stay in control.**
 
-ApplyRecall connects three primary interaction surfaces into a unified, privacy-first personal job application assistant:
-1. **Chrome Extension (Manifest V3)** — The primary interaction point right where you apply: auto-detects job listings, parses form fields, autofills approved profile data and saved answers, saves unfamiliar questions on the go, and prompts you to confirm submission.
-2. **Web Dashboard (Next.js & Tailwind CSS)** — The central visibility and management layer: track application pipelines, manage your reusable Answer Library across scopes, update your approved student profile, manage reminders, and generate follow-up email drafts.
-3. **Telegram Assistant** — The conversational mobile interface: check application summaries, look up pending statuses, update interviews on the go, set reminders, and request follow-up drafts directly from your phone.
-4. **Python Reminder Worker** — Continuously monitors scheduled follow-ups, checks application state (never bugs you about Rejected, Withdrawn, or Offer opportunities), prevents duplicates, and delivers notifications.
-
-All four surfaces share a single database source of truth.
+ApplyRecall is an intelligent job application management and memory platform designed for students and job seekers applying across dozens of careers portals and ATS platforms.
 
 ---
 
-## Architecture Overview
+## 01. Architecture Overview
+
+ApplyRecall connects three user surfaces backed by a single source of truth:
 
 ```
-                      +-----------------------------+
-                      |      CHROME EXTENSION       |
-                      | (Manifest V3, 380px Popup)  |
-                      | - Detects Job & JSON-LD     |
-                      | - Scans Form Fields         |
-                      | - Autofills Approved Info   |
-                      | - Saves Answers on the Go   |
-                      | - Confirms Submission       |
-                      +--------------+--------------+
-                                     |
-                                     | REST API (Bearer Token / Pairing)
-                                     v
-+---------------------+       +-----------------------+       +----------------------+
-|  NEXT.JS DASHBOARD  | <---> | PYTHON FASTAPI SERVER | <---> | TELEGRAM ASSISTANT   |
-| (Arcade SaaS UI)    |       | (Business Rules & ML) |       | (Conversational Bot) |
-| - Pipeline Overview |       +-----------+-----------+       | - /summary, /status  |
-| - Answer Library    |                   |                   | - Quick Updates      |
-| - Profile Memory    |                   v                   | - Reminders          |
-| - Follow-up Composer|       +-----------------------+       +----------------------+
-+---------------------+       |  POSTGRESQL / SQLITE  |
-                              | (Single Source Truth) |
-                              +-----------+-----------+
-                                          ^
-                                          |
-                              +-----------+-----------+
-                              | PYTHON REMINDER WORKER|
-                              | (Deduplicated Cron)   |
-                              +-----------------------+
-```
-
----
-
-## Design System: Arcade-Inspired Minimal SaaS
-
-- **Color Tokens**:
-  - Primary Accent Blue: `#2142E7`
-  - Deep Blue: `#182FA5`
-  - Canvas White: `#FFFFFF`
-  - Soft Background: `#F9FAFB`
-  - Subtle Surface: `#F3F4F6`
-  - Text Primary: `#111827`
-  - Text Secondary: `#4B5563`
-  - Borders: `#E5E7EB`
-- **Typography**: Inter (Weights: 400, 500, 600, 700), tabular numerals for dates and counts.
-- **Radius System**: 8px (tags), 12px (buttons/inputs), 16px (cards), 20px (containers).
-- **Popup Dimensions**: 380px width, 540–600px height, scrollable content.
-
----
-
-## Directory Structure
-
-```
-applyrecall/
-├── backend/
-│   ├── app/
-│   │   ├── config.py              # App settings & env loading
-│   │   ├── database.py            # Unified schema & local SQLite / Supabase PostgreSQL engine
-│   │   ├── main.py                # FastAPI entrypoint, middleware, routers
-│   │   ├── worker.py              # Standalone background reminder worker
-│   │   ├── models/schemas.py      # Pydantic request/response schemas
-│   │   ├── routers/
-│   │   │   ├── auth.py            # Pairing code generation & linking
-│   │   │   ├── profile.py         # Profile, experiences, projects, export
-│   │   │   ├── answers.py         # Intelligent answer library & matching engine
-│   │   │   ├── applications.py    # Applications tracking, timeline events, confirm-applied
-│   │   │   ├── reminders.py       # Reminders CRUD, snooze, manual trigger
-│   │   │   ├── dashboard.py       # Metric summary, pipeline distribution, activity feed
-│   │   │   └── telegram_router.py # Webhook & interactive test simulator
-│   │   └── services/
-│   │       ├── matching.py        # Question normalization, keywords, fuzzy & intent matching
-│   │       ├── followup.py        # Follow-up email draft generator (Gmail & mailto)
-│   │       ├── reminder_service.py# Worker logic, terminal status checks, deduplication
-│   │       └── telegram_service.py# Conversational NLP & Telegram Bot API client
-│   ├── tests/
-│   │   ├── test_backend.py        # Unit tests for matching, scoping, reminders, telegram
-│   │   └── test_e2e_scenarios.py  # End-to-end integration tests for all 10 specification scenarios
-│   ├── supabase_schema.sql        # Full Supabase PostgreSQL DDL with RLS & indexes
-│   ├── run.py                     # API launcher
-│   └── requirements.txt
-├── extension/
-│   ├── manifest.json              # Manifest V3 configuration
-│   ├── popup.html                 # 380px Arcade-styled popup UI
-│   ├── popup.css                  # Custom design token styling
-│   ├── popup.js                   # Extension state machine & API bridge
-│   ├── content.js                 # Content script for JSON-LD, form inspection, safe autofill
-│   ├── background.js              # Service worker & session persistence
-│   ├── test_form.html             # Interactive Acme job application test page
-│   └── icons/                     # Generated extension icons (16, 32, 48, 128)
-├── dashboard/
-│   ├── app/
-│   │   ├── page.tsx               # Overview dashboard & metrics
-│   │   ├── applications/page.tsx  # Applications tracking & detail slide-over
-│   │   ├── answers/page.tsx       # Answer Library (Universal, Company, Role scopes)
-│   │   ├── profile/page.tsx       # Approved student profile & experience
-│   │   ├── reminders/page.tsx     # Due, upcoming, snoozed & completed reminders
-│   │   ├── settings/page.tsx      # Device pairing codes & Telegram simulator
-│   │   ├── layout.tsx
-│   │   └── globals.css
-│   ├── components/                # Reusable Sidebar, TopBar, Modals
-│   ├── lib/api.ts                 # Typed API client
-│   ├── tailwind.config.js
-│   ├── tsconfig.json
-│   └── package.json
-└── README.md
++-------------------------------------------------------------------------------+
+|                             CHROME EXTENSION                                  |
+|   * Content script (detects job postings, JSON-LD, form fields)               |
+|   * Tab-isolated application context (prevents multi-tab state corruption)    |
+|   * Safe autofill (preserves existing field inputs; skips sensitive fields)   |
+|   * Answer memory (matches approved answers, saves unmapped prompts)          |
+|   * Submission detection (prompts to confirm submission & schedules reminders)|
++---------------------------------------+---------------------------------------+
+                                        | (HTTPS / X-Device-Token)
+                                        v
++-------------------------------------------------------------------------------+
+|                           FASTAPI PYTHON BACKEND                              |
+|   * Supabase JWT verification (signature, issuer, expiration, sub claim)      |
+|   * Device token engine (SHA-256 hashed tokens, atomic single-use pairing)    |
+|   * Strict scoping rules (universal vs company-specific vs application)       |
+|   * Reminders engine (exponential backoff retry, terminal status guard)       |
+|   * Telegram assistant router (webhook secret check, update_id deduplication) |
+|   * Strict CORS enforcement (no wildcards in production)                      |
++-------------------+---------------------------------------+-------------------+
+                    |                                       |
+                    v                                       v
++---------------------------------------+   +-----------------------------------+
+|         SUPABASE POSTGRESQL           |   |       TELEGRAM BOT ASSISTANT      |
+|   * Row Level Security (RLS) on all   |   |   * Quick status queries          |
+|     12 production tables              |   |   * Conversational updates        |
+|   * Profiles, Experiences, Projects   |   |   * Follow-up draft generation    |
+|   * Answer library with scope flags   |   |   * Follow-up reminder alerts     |
+|   * Applications & Timeline audit log |   |   * Authenticated via /link CODE  |
+|   * Hashed pairing codes & devices    |   +-----------------------------------+
++-------------------+-------------------+
+                    ^
+                    | (HTTPS / JWT / Proxy)
++-------------------+-----------------------------------------------------------+
+|                           NEXT.JS 14 DASHBOARD                                |
+|   * Arcade-inspired, high-density minimal UI (38px touch targets, Inter)      |
+|   * Pipeline overview (Saved, Applied, Assessment, Interview, Offer, Rejected)|
+|   * Answer Library manager (general vs company-specific vs role-specific)     |
+|   * Follow-up draft modal with Gmail & Mailto pre-filled composer links       |
+|   * Device pairing & connection settings (with real-time simulator)           |
++-------------------------------------------------------------------------------+
 ```
 
 ---
 
-## Quickstart Guide
+## 02. Security & Remediation Enhancements
 
-### 1. Backend (FastAPI)
+A rigorous technical audit identified and resolved all production blockers:
 
-1. Open a terminal in `backend/`:
-   ```bash
-   cd backend
-   .\venv\Scripts\activate
-   python run.py
-   ```
-2. The API will start at `http://127.0.0.1:8000`.
-   - Interactive Swagger Docs: `http://127.0.0.1:8000/docs`
-   - Default Student Profile Seeded: `Alex Morgan (Stanford University)`
+1. **Authentication & Identity**:
+   - Removed all default user ID fallbacks in production.
+   - Integrated Supabase JWT verification (`HS256` validation against `SUPABASE_JWT_SECRET`, checking `sub`, `exp`, `iat`, and `iss`).
+   - Device pairing issues high-entropy cryptographically random device tokens (`secrets.token_urlsafe(32)`) with SHA-256 hashes stored in `device_connections`.
+   - Pairing codes expire in 5 minutes and are single-use enforced atomically.
+   - Connected devices can be viewed and revoked via `/api/auth/devices`.
 
-### 2. Web Dashboard (Next.js)
+2. **Chrome Extension Improvements**:
+   - Tab-isolated context: State is scoped per tab (`tab_${tabId}_application` and `tab_${tabId}_submission_pending`), preventing tab crosstalk when applying to multiple jobs simultaneously.
+   - Safe autofill: Does NOT overwrite existing form field inputs unless explicitly forced.
+   - Sensitive field skipping: Passwords, CVV, OTP, tokens, SSN, bank routing, and salary expectation fields are automatically bypassed.
+   - Verification feedback: Form inputs are validated after injection to verify DOM value update.
+   - Unanswered question detection: Long-form questions on the active page are surfaced for instant review and saving to the answer library.
 
-1. Open a terminal in `dashboard/`:
-   ```bash
-   cd dashboard
-   npm run dev
-   ```
-2. Open `http://localhost:3000` in your browser.
+3. **Telegram Assistant**:
+   - Webhook security: Validates incoming requests using `X-Telegram-Bot-Api-Secret-Token` and `hmac.compare_digest`.
+   - Update deduplication: Tracks `update_id` in `telegram_processed_updates` to prevent duplicate processing.
+   - Ambiguous company disambiguation: Handles multiple applications at the same company cleanly.
+   - Dev-gate simulation: `/api/telegram/simulate` is strictly disabled in production.
 
-### 3. Chrome Extension
+4. **Background Reminder Worker**:
+   - Retry lifecycle: `pending` -> `processing` -> `sent` / `failed` with exponential backoff (5m, 20m, 80m).
+   - Terminal status guard: Never notifies students about jobs marked `Rejected`, `Withdrawn`, or `Offer`.
+   - Timezone-aware timestamping throughout.
 
-1. Open Google Chrome and navigate to `chrome://extensions/`.
-2. Enable **Developer mode** (toggle in the top-right corner).
-3. Click **Load unpacked** and select the `extension/` folder in this repository.
-4. Click the ApplyRecall extension icon:
-   - Click **Use Default Student Profile** (or enter a 6-character pairing code from the dashboard Settings page).
-   - Open `extension/test_form.html` in Chrome to test live job detection, autofill, and submission confirmation!
+5. **Secrets & Hygiene**:
+   - `.env` and `*.db` files removed from git tracking and added to `.gitignore`.
+   - Clean `.env.example` templates created for both backend and dashboard.
 
-### 4. Background Reminder Worker
+---
 
-In a separate terminal:
+## 03. Getting Started (Local Development)
+
+### Prerequisites
+- Python 3.11+
+- Node.js 18+ and npm
+- Chrome or Chromium-based browser
+
+### 1. Backend Setup
 ```bash
 cd backend
-.\venv\Scripts\python.exe -m app.worker
+python -m venv venv
+# On Windows:
+.\venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+pip install -r requirements.txt
+cp .env.example .env
+# Start the API server
+python run.py
 ```
-The worker periodically checks the database for reminders where `reminder_at <= now`, skips terminal opportunities (Rejected, Withdrawn, Offer), dispatches Telegram notifications, and marks reminders completed.
+API runs at `http://127.0.0.1:8000`. Documentation available at `http://127.0.0.1:8000/docs`.
+
+### 2. Background Reminder Worker
+```bash
+cd backend
+# With venv activated:
+python -m app.worker
+```
+
+### 3. Web Dashboard
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+Dashboard opens at `http://localhost:3000`.
+
+### 4. Chrome Extension
+1. Open Chrome and navigate to `chrome://extensions/`.
+2. Toggle on **Developer mode** (top right).
+3. Click **Load unpacked** and select the `extension/` directory.
+4. Pin the ApplyRecall extension icon to your browser toolbar.
 
 ---
 
-## Non-Negotiable Product Principles Implemented
+## 04. Production Deployment
 
-1. **Remember only approved information**: Details are saved only when entered by the student or saved via the "Save to Answer Library" action.
-2. **Never invent details**: Follow-up email drafts use verified application parameters. Missing HR emails are left blank for student entry.
-3. **Never silently submit**: The student reviews all autofilled fields. The extension never automatically clicks submit buttons or uploads files.
-4. **Never send emails automatically**: Generates prefilled `mailto:` and Gmail web compose links for student review.
-5. **Strict Answer Scoping**:
-   - `general`: Universal answers (Tell us about yourself, Strengths).
-   - `company`: Company-specific answers (e.g. Acme) are **never** offered for a different company (e.g. Stripe).
-   - `application`: Tied strictly to the position and role.
-6. **Single Source of Truth**: All interfaces read and write to the same backend tables and user account.
+### Database (Supabase)
+1. Create a project on [Supabase](https://supabase.com).
+2. Open the SQL Editor and execute `backend/supabase_schema.sql`.
+3. In Project Settings > API, copy the **Project URL**, **Anon Key**, **Service Role Key**, and **JWT Secret**.
+
+### Backend (Render / Railway / Fly.io)
+1. Connect your repository to Render.
+2. Use the included `render.yaml` blueprint or configure a Web Service:
+   - Root Directory: `backend`
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+3. Configure environment variables from `backend/.env.example`.
+4. Deploy the Background Worker service using start command: `python -m app.worker`.
+
+### Web Dashboard (Vercel)
+1. Import repository to [Vercel](https://vercel.com).
+2. Set Root Directory to `dashboard`.
+3. Framework preset: **Next.js**.
+4. Configure environment variables:
+   - `BACKEND_PROXY_URL`: URL of your deployed FastAPI service.
+
+### Telegram Assistant (BotFather)
+1. Message `@BotFather` on Telegram and create a new bot via `/newbot`.
+2. Set `TELEGRAM_BOT_TOKEN` in backend environment variables.
+3. Configure the webhook:
+   ```bash
+   curl -F "url=https://your-api.com/api/telegram/webhook" \
+        -F "secret_token=YOUR_TELEGRAM_WEBHOOK_SECRET" \
+        https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
+   ```
 
 ---
 
-## Running the Verification Test Suite
+## 05. Verification & Testing
 
-Run the full pytest suite covering unit and end-to-end integration scenarios:
+Run all unit, integration, security, and end-to-end tests:
 
 ```bash
 cd backend
+# Set pythonpath and run pytest
 $env:PYTHONPATH="."
 .\venv\Scripts\pytest.exe -v
 ```
 
-All 7 test suites pass, verifying:
-- Profile autofill data retrieval
-- Answer matching with exact, keyword, fuzzy, and intent recognition
-- Strict company-scoping isolation (Acme answer is never matched for Stripe)
-- Unknown question saving on the go and subsequent future reuse
-- Job context recognition via JSON-LD and document headers
-- Application submission confirmation and automatic reminder creation
-- Telegram assistant conversational summaries, company lookups, and status updates
-- Reminder worker processing and cancellation of reminders for terminal statuses (Rejected/Withdrawn/Offer)
-- Follow-up email draft generation with Gmail & mailto links
-- Multi-user privacy isolation
+Current test suite: **13 tests passing (100%)**, covering:
+- Database initialization and starter seeding
+- Unauthorized request rejection (missing token, malformed token, unknown user)
+- Supabase JWT cryptographic validation, expiration, and issuer verification
+- Atomic pairing code generation, SHA-256 hashing, single-use, and expiration
+- Opaque device token authentication and device revocation
+- Semantic, keyword, and strict scoping answer matching
+- Follow-up email draft generation with Gmail and Mailto deep links
+- Conversational Telegram Assistant queries and status updates
+- Telegram webhook secret verification and `update_id` deduplication
+- Reminder delivery lifecycle, terminal status cancellation, and exponential backoff retry
+- Strict user data privacy and tenant isolation
+- Full 14-step cross-surface workflow simulation
+
+---
+
+## 06. License
+
+Proprietary — ApplyRecall Team. All rights reserved.
