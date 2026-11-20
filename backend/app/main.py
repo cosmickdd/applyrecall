@@ -1,0 +1,51 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
+from app.database import init_db
+from app.routers import auth, profile, answers, applications, reminders, dashboard, telegram_router
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: ensure database schema and starter data
+    await init_db()
+    yield
+    # Shutdown
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="Backend API for ApplyRecall — The intelligent job application memory & assistant",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allows web dashboard, chrome-extension:// origins, and local testing
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount all routers
+app.include_router(auth.router, prefix="/api")
+app.include_router(profile.router, prefix="/api")
+app.include_router(answers.router, prefix="/api")
+app.include_router(applications.router, prefix="/api")
+app.include_router(reminders.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
+app.include_router(telegram_router.router, prefix="/api")
+
+@app.get("/")
+async def root():
+    return {
+        "product": "ApplyRecall",
+        "tagline": "Apply once. Remember everything. Stay in control.",
+        "status": "online",
+        "docs": "/docs"
+    }
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}

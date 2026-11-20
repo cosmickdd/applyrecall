@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acme Careers — Software Engineer Application</title>
+  <meta property="og:title" content="Software Engineer - Backend at Acme">
+  <meta property="og:site_name" content="Acme Careers">
+
+  <!-- Schema.org JSON-LD JobPosting for Test Scenario 5 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org/",
+    "@type": "JobPosting",
+    "title": "Software Engineer - Backend",
+    "description": "Join our distributed infrastructure engineering team building resilient cloud services.",
+    "hiringOrganization": {
+      "@type": "Organization",
+      "name": "Acme",
+      "sameAs": "https://acme.example"
+    },
+    "jobLocation": {
+      "@type": "Place",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "San Francisco",
+        "addressRegion": "CA"
+      }
+    },
+    "employmentType": "Full-time"
+  }
+  </script>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #F8FAFC;
+      color: #0F172A;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      max-width: 680px;
+      width: 100%;
+      background: #FFFFFF;
+      padding: 36px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      border: 1px solid #E2E8F0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #EEF2FF;
+      color: #2142E7;
+      font-weight: 600;
+      font-size: 12px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 26px;
+      letter-spacing: -0.02em;
+    }
+    .job-sub {
+      color: #64748B;
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 24px 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #E2E8F0;
+      color: #334155;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-row {
+      display: flex;
+      gap: 16px;
+    }
+    .form-col {
+      flex: 1;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+    input[type="text"], input[type="email"], input[type="tel"], textarea, select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 14px;
+      border: 1px solid #CBD5E1;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #FFFFFF;
+      transition: all 0.2s;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #2142E7;
+      box-shadow: 0 0 0 3px rgba(33, 66, 231, 0.15);
+    }
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+    .file-input {
+      font-size: 13px;
+    }
+    .file-hint {
+      font-size: 11px;
+      color: #94A3B8;
+      margin-top: 4px;
+    }
+    .submit-btn {
+      margin-top: 24px;
+      background: #2142E7;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    .submit-btn:hover {
+      background: #182FA5;
+    }
+    .success-alert {
+      display: none;
+      background: #DCFCE7;
+      color: #15803D;
+      border: 1px solid #86EFAC;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 20px;
+      text-align: center;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <span class="badge">Acme Engineering</span>
+    <h1>Software Engineer - Backend</h1>
+    <div class="job-sub">San Francisco, CA • Full-time • Acme Platform Team</div>
+
+    <form id="job-application-form">
+      <div class="section-title">Personal Information</div>
+
+      <div class="form-row">
+        <div class="form-col form-group">
+          <label for="fname">First Name</label>
+          <input type="text" id="fname" name="first_name" placeholder="First Name" required />
+        </div>
+        <div class="form-col form-group">
+          <label for="lname">Last Name</label>
+          <input type="text" id="lname" name="last_name" placeholder="Last Name" required />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input type="email" id="email" name="email" placeholder="name@example.com" required />
+      </div>
+
+      <div class="form-row">
+        <div class="form-col form-group">
+          <label for="phone">Phone Number</label>
+          <input type="tel" id="phone" name="phone" placeholder="+1 (555) 000-0000" />
+        </div>
+        <div class="form-col form-group">
+          <label for="city">Current City</label>
+          <input type="text" id="city" name="city" placeholder="City" />
+        </div>
+      </div>
+
+      <div class="section-title">Education &amp; Links</div>
+
+      <div class="form-row">
+        <div class="form-col form-group">
+          <label for="university">University / College</label>
+          <input type="text" id="university" name="university" placeholder="College name" />
+        </div>
+        <div class="form-col form-group">
+          <label for="degree">Degree / Major</label>
+          <input type="text" id="degree" name="degree" placeholder="Degree" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-col form-group">
+          <label for="linkedin">LinkedIn Profile URL</label>
+          <input type="text" id="linkedin" name="linkedin_url" placeholder="https://linkedin.com/in/..." />
+        </div>
+        <div class="form-col form-group">
+          <label for="github">GitHub Profile URL</label>
+          <input type="text" id="github" name="github_url" placeholder="https://github.com/..." />
+        </div>
+      </div>
+
+      <div class="section-title">Application Questions</div>
+
+      <!-- Test Scenario 2: Saved Answer Reuse -->
+      <div class="form-group">
+        <label for="intro-essay">Tell us about yourself and what you're looking for next.</label>
+        <textarea id="intro-essay" name="about_yourself" placeholder="Your background and interests..."></textarea>
+      </div>
+
+      <!-- Test Scenario 3: Unknown Question (Save on the go) -->
+      <div class="form-group">
+        <label for="startup-motivation">What motivates you to work in an early-stage startup?</label>
+        <textarea id="startup-motivation" name="startup_motivation" placeholder="Share what drives you in fast-paced environments..."></textarea>
+      </div>
+
+      <!-- Resume (File input - should NOT be auto-filled, user picks file) -->
+      <div class="form-group">
+        <label for="resume">Resume / CV</label>
+        <input type="file" id="resume" name="resume" class="file-input" />
+        <div class="file-hint">Select a local PDF or DOCX file. Never automatically uploaded.</div>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-form-btn">Submit Application</button>
+      <div id="submit-success" class="success-alert">
+        Application submitted successfully to Acme! ApplyRecall will prompt you to confirm.
+      </div>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById("job-application-form").addEventListener("submit", function(e) {
+      e.preventDefault();
+      document.getElementById("submit-success").style.display = "block";
+      document.getElementById("submit-form-btn").disabled = true;
+      document.getElementById("submit-form-btn").textContent = "Submitted ✓";
+    });
+  </script>
+</body>
+</html>

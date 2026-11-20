@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=380, initial-scale=1.0" />
+  <title>ApplyRecall</title>
+  <link rel="stylesheet" href="popup.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand-group">
+        <div class="brand-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">ApplyRecall</h1>
+          <p class="brand-tagline">Application Memory</p>
+        </div>
+      </div>
+      <div id="connection-badge" class="badge badge-neutral">Offline</div>
+    </header>
+
+    <!-- Feedback Toast -->
+    <div id="status-toast" class="toast hidden"></div>
+
+    <!-- STATE A: Not Connected -->
+    <section id="state-not-connected" class="state-card hidden">
+      <div class="empty-icon-wrap">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2142E7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+          <line x1="6" y1="6" x2="6.01" y2="6"></line>
+          <line x1="6" y1="18" x2="6.01" y2="18"></line>
+        </svg>
+      </div>
+      <h2 class="card-heading">Connect your account</h2>
+      <p class="card-description">
+        Link your existing ApplyRecall account to remember your application details and approved answers.
+      </p>
+      
+      <div class="form-group">
+        <label for="pairing-code-input" class="input-label">Pairing Code</label>
+        <input type="text" id="pairing-code-input" class="text-input" placeholder="e.g. 8K2M9P" maxlength="6" />
+        <span class="input-hint">Generate a code in Dashboard &gt; Settings</span>
+      </div>
+
+      <button id="connect-btn" class="btn btn-primary btn-full">
+        Connect Extension
+      </button>
+      <button id="dev-quick-connect-btn" class="btn btn-ghost btn-full mt-2">
+        Use Default Student Profile
+      </button>
+    </section>
+
+    <!-- STATE I/J: Submission Confirmation Modal / Card -->
+    <section id="state-submission-confirm" class="state-card alert-card hidden">
+      <div class="alert-header">
+        <span class="alert-icon">✓</span>
+        <div>
+          <h2 class="card-heading">Have you submitted this application?</h2>
+          <p class="card-description">We noticed you submitted the form. Confirming keeps your dashboard updated.</p>
+        </div>
+      </div>
+      <div class="submission-checkbox-wrap">
+        <label class="checkbox-label">
+          <input type="checkbox" id="schedule-reminder-check" checked />
+          <span>Schedule follow-up reminder in 7 days</span>
+        </label>
+      </div>
+      <div class="button-row mt-3">
+        <button id="confirm-applied-btn" class="btn btn-primary flex-1">Yes, mark as applied</button>
+        <button id="dismiss-submission-btn" class="btn btn-secondary">Not yet</button>
+      </div>
+    </section>
+
+    <!-- STATE B / C / D / E: Active Job & Context -->
+    <main id="state-connected" class="hidden">
+      <!-- Active Job Card -->
+      <section class="section-card">
+        <div class="section-header">
+          <span class="section-subtitle">CURRENTLY APPLYING TO</span>
+          <span id="active-status-badge" class="badge badge-blue">Ready</span>
+        </div>
+        <div class="job-meta-wrap">
+          <h2 id="job-company" class="job-company">Detecting job...</h2>
+          <div id="job-position" class="job-position">Checking page context</div>
+          <div class="job-submeta">
+            <span id="job-source" class="source-tag">Web listing</span>
+            <span id="job-location" class="location-tag"></span>
+          </div>
+        </div>
+
+        <div id="start-app-action" class="mt-3">
+          <button id="start-application-btn" class="btn btn-secondary btn-full">
+            Start Application Context
+          </button>
+        </div>
+      </section>
+
+      <!-- Autofill Card -->
+      <section class="section-card mt-3">
+        <div class="section-header">
+          <span class="section-subtitle">FORM MEMORY</span>
+          <span id="detected-fields-count" class="badge badge-neutral">Scanning...</span>
+        </div>
+        <p class="card-description text-sm">
+          Autofills approved personal details and matches saved answers for essay questions. Passwords and file uploads are safely skipped.
+        </p>
+
+        <button id="autofill-btn" class="btn btn-primary btn-full mt-3">
+          Autofill this application
+        </button>
+
+        <div id="autofill-results" class="results-panel hidden mt-3">
+          <div class="results-header">
+            <span id="results-count-badge" class="badge badge-success">Filled</span>
+            <span id="results-text" class="text-xs text-muted">Review populated fields below:</span>
+          </div>
+          <ul id="filled-items-list" class="filled-list"></ul>
+        </div>
+      </section>
+
+      <!-- STATE H: New Question Detected / Save on the go -->
+      <section id="new-question-section" class="section-card mt-3">
+        <div class="section-header">
+          <span class="section-subtitle">SAVE NEW ANSWER</span>
+          <span class="badge badge-amber">Smart Memory</span>
+        </div>
+        <p class="card-description text-sm">
+          Save an answer you just wrote so ApplyRecall can offer it on future applications.
+        </p>
+
+        <div class="form-group mt-2">
+          <label class="input-label" for="new-q-text">Question Prompt</label>
+          <input type="text" id="new-q-text" class="text-input" placeholder="e.g. Why do you want to join our team?" />
+        </div>
+
+        <div class="form-group mt-2">
+          <label class="input-label" for="new-a-text">Your Answer</label>
+          <textarea id="new-a-text" class="text-input textarea-input" rows="3" placeholder="Enter your approved answer..."></textarea>
+        </div>
+
+        <div class="form-group mt-2">
+          <label class="input-label">Save Scope</label>
+          <select id="new-scope-select" class="text-input">
+            <option value="general">Universal (General answer for all companies)</option>
+            <option value="company">Company-specific (Only for this company)</option>
+            <option value="application">Application-specific (Only for this role)</option>
+          </select>
+        </div>
+
+        <button id="save-answer-btn" class="btn btn-secondary btn-full mt-3">
+          Save to Answer Library
+        </button>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div class="footer-links">
+        <a href="http://localhost:3000" target="_blank" class="footer-link">Open Dashboard</a>
+        <span class="footer-dot">•</span>
+        <a href="http://localhost:3000/answers" target="_blank" class="footer-link">Answer Library</a>
+      </div>
+      <div id="user-info-footer" class="user-info text-xs text-muted">ApplyRecall MVP</div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
