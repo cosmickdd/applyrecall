@@ -1,7 +1,7 @@
 // ApplyRecall Extension Popup Logic
 // Connects to backend with secure device token, tab-scoped context, answers matching, and safe autofill.
 
-const PROD_API_BASE = "https://applyrecall-api.onrender.com/api";
+const PROD_API_BASE = "https://applyrecall.onrender.com/api";
 const PROD_DASHBOARD_BASE = "https://applyrecall.vercel.app";
 const DEV_API_BASE = "http://localhost:8000/api";
 const DEV_DASHBOARD_BASE = "http://localhost:3000";
