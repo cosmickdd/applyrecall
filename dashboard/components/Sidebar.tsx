@@ -98,10 +98,14 @@ export default function Sidebar() {
       {/* Bottom Tool Connections & User Info */}
       <div className="p-3 border-t border-edge-default space-y-3">
         {/* Connected Tools Status */}
-        <div className="bg-brand-soft border border-edge-default rounded-card p-2.5 space-y-2">
+        <Link 
+          href="/settings"
+          className="block bg-brand-soft hover:bg-brand-subtle border border-edge-default rounded-card p-2.5 space-y-2 transition-colors cursor-pointer group"
+          title="Click to manage and pair connections in Settings"
+        >
           <div className="flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-1.5 text-ink-secondary font-medium">
-              <Puzzle className="w-3.5 h-3.5 text-ink-muted" strokeWidth={2} />
+            <div className="flex items-center gap-1.5 text-ink-secondary group-hover:text-ink-primary font-medium">
+              <Puzzle className="w-3.5 h-3.5 text-ink-muted group-hover:text-brand-blue" strokeWidth={2} />
               <span>Extension</span>
             </div>
             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
@@ -114,8 +118,8 @@ export default function Sidebar() {
           </div>
 
           <div className="flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-1.5 text-ink-secondary font-medium">
-              <Send className="w-3.5 h-3.5 text-ink-muted" strokeWidth={2} />
+            <div className="flex items-center gap-1.5 text-ink-secondary group-hover:text-ink-primary font-medium">
+              <Send className="w-3.5 h-3.5 text-ink-muted group-hover:text-sky-600" strokeWidth={2} />
               <span>Telegram Bot</span>
             </div>
             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
@@ -126,7 +130,7 @@ export default function Sidebar() {
               {summary?.telegram_connected ? 'Active' : 'Unlinked'}
             </span>
           </div>
-        </div>
+        </Link>
 
         {/* User Card */}
         <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-btn hover:bg-brand-subtle transition-colors">
