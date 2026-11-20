@@ -41,6 +41,7 @@ class Settings:
     DEVICE_TOKEN_BYTES: int = 32  # 256-bit token
 
     # Worker configuration
+    ENABLE_EMBEDDED_WORKER: bool = os.getenv("ENABLE_EMBEDDED_WORKER", "false").lower() in ("true", "1", "yes")
     WORKER_INTERVAL_SECONDS: int = int(os.getenv("WORKER_INTERVAL_SECONDS", "15"))
     WORKER_BATCH_SIZE: int = int(os.getenv("WORKER_BATCH_SIZE", "10"))
     WORKER_LEASE_MINUTES: int = int(os.getenv("WORKER_LEASE_MINUTES", "5"))

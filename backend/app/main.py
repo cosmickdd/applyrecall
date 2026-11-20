@@ -1,4 +1,5 @@
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,11 +12,21 @@ async def lifespan(app: FastAPI):
     # Startup: validate production requirements and initialize database schema
     settings.validate_production()
     await init_db()
+    worker_task = None
+    if settings.ENABLE_EMBEDDED_WORKER:
+        from app.worker import start_worker_loop
+        worker_task = asyncio.create_task(start_worker_loop(interval_seconds=settings.WORKER_INTERVAL_SECONDS))
     yield
-    # Shutdown: close database connection pool
+    if worker_task:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    # Shutdown: close database connection pools
     if settings.use_postgres:
-        from app.database import close_pg_pool
-        await close_pg_pool()
+        from app.database import close_all_pg_pools
+        await close_all_pg_pools()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
