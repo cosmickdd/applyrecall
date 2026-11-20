@@ -14,12 +14,14 @@ async def send_telegram_message(
     text: str,
     reply_markup: Optional[Dict[str, Any]] = None,
     parse_mode: Optional[str] = "HTML"
-) -> bool:
-    """Sends a message via the official Telegram Bot API."""
+) -> Tuple[bool, str]:
+    """
+    Sends a message via the official Telegram Bot API.
+    Returns (success: bool, detail: str).
+    Never simulates success when token is missing.
+    """
     if not settings.TELEGRAM_BOT_TOKEN:
-        # Mock mode if token not set in dev
-        print(f"[Telegram Mock] To: {chat_id}\n{text}\n")
-        return True
+        return False, "TELEGRAM_BOT_TOKEN is not configured on the server."
         
     url = f"{TELEGRAM_API_BASE}{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
@@ -33,10 +35,14 @@ async def send_telegram_message(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
-            return resp.status_code == 200
+            data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            if resp.status_code == 200 and data.get("ok") is True:
+                return True, "Message delivered successfully."
+            
+            error_desc = data.get("description", f"Telegram API error {resp.status_code}")
+            return False, error_desc
     except Exception as e:
-        print(f"[Telegram Send Error] {e}")
-        return False
+        return False, f"Telegram network error: {str(e)}"
 
 async def get_user_by_chat_id(conn, chat_id: str) -> Optional[str]:
     cursor = await conn.execute(
@@ -95,7 +101,7 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         code = parts[1].strip().upper()
         code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
         
-        # Verify code using the hash
+        # Verify code using the hash atomically
         cursor = await conn.execute(
             "SELECT id, user_id, expires_at, used_at FROM pairing_codes WHERE code_hash = ? AND device_type = 'telegram' AND used_at IS NULL",
             (code_hash,)
@@ -240,7 +246,7 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         if not matched_status:
             return f"Unknown status '{new_status_raw}'. Valid statuses are: Saved, Applied, Assessment, Interview, Offer, Rejected, Withdrawn."
             
-        # Find matching applications — handle ambiguous matches
+        # Find matching applications — handle ambiguous matches cleanly
         cursor = await conn.execute(
             "SELECT id, company, position, status FROM applications WHERE user_id = ? AND lower(company) LIKE ?",
             (user_id, f"%{target_company.lower()}%")
@@ -251,10 +257,10 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
             return f"I couldn't find an application for '{target_company}'. Please check the company name."
         
         if len(apps) > 1:
-            lines = [f"Found {len(apps)} applications matching '{target_company}':\n"]
+            lines = [f"You have {len(apps)} applications matching '{target_company}'. Which one would you like to update?\n"]
             for i, a in enumerate(apps, 1):
                 lines.append(f"{i}. <b>{a['company']}</b> — {a['position']} (<i>{a['status']}</i>)")
-            lines.append(f"\nPlease be more specific, e.g.: \"Update {apps[0]['company']} {apps[0]['position']} to {matched_status}\"")
+            lines.append(f"\nPlease be specific, e.g.: \"Update {apps[0]['company']} {apps[0]['position']} to {matched_status}\"")
             return "\n".join(lines)
 
         app = apps[0]

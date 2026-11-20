@@ -228,6 +228,17 @@ async def confirm_application_applied(
     VALUES (?, ?, ?, 'status_change', ?, 'Applied', 'Application submission confirmed by student.', ?)
     """, (new_uuid(), user_id, app_id, old_status, now))
     
+    # Record answers linked to this application
+    if req.used_answers:
+        for ans in req.used_answers:
+            ans_id = new_uuid()
+            await conn.execute("""
+            INSERT INTO application_answers (id, user_id, application_id, question, answer, source_answer_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (ans_id, user_id, app_id, ans.question.strip(), ans.answer.strip(), ans.source_answer_id, now))
+            if ans.source_answer_id:
+                await conn.execute("UPDATE answers SET last_used_at = ? WHERE id = ? AND user_id = ?", (now, ans.source_answer_id, user_id))
+
     # Create follow-up reminder (default 7 days) if requested
     if req.create_reminder:
         reminder_time = (datetime.now(timezone.utc) + timedelta(days=req.reminder_days)).isoformat()
@@ -241,6 +252,35 @@ async def confirm_application_applied(
     cursor = await conn.execute("SELECT * FROM applications WHERE id = ?", (app_id,))
     updated_row = await cursor.fetchone()
     return ApplicationResponse(**dict(updated_row))
+
+@router.post("/{app_id}/answers")
+async def add_application_answer(
+    app_id: str,
+    req: Dict[str, Any],
+    user_id: str = Depends(get_current_user_id),
+    conn = Depends(get_db)
+):
+    """Records an answer used in this application and updates last_used_at."""
+    cursor = await conn.execute("SELECT id FROM applications WHERE id = ? AND user_id = ?", (app_id, user_id))
+    if not await cursor.fetchone():
+        raise HTTPException(status_code=404, detail="Application not found.")
+        
+    ans_id = new_uuid()
+    now = now_iso()
+    q = req.get("question", "").strip()
+    a = req.get("answer", "").strip()
+    source_id = req.get("source_answer_id")
+    
+    await conn.execute("""
+    INSERT INTO application_answers (id, user_id, application_id, question, answer, source_answer_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (ans_id, user_id, app_id, q, a, source_id, now))
+    
+    if source_id:
+        await conn.execute("UPDATE answers SET last_used_at = ? WHERE id = ? AND user_id = ?", (now, source_id, user_id))
+        
+    await conn.commit()
+    return {"id": ans_id, "application_id": app_id, "question": q, "answer": a, "source_answer_id": source_id, "created_at": now}
 
 @router.post("/{app_id}/events", response_model=ApplicationEventResponse)
 async def add_application_event(

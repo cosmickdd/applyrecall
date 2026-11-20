@@ -7,6 +7,14 @@
 
   console.log("[ApplyRecall] Content script initialized on:", window.location.href);
 
+  function formatCompanyName(raw) {
+    if (!raw) return "";
+    return raw
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+      .trim();
+  }
+
   // 1. Job Detection
   function extractJobContext() {
     let company = "";
@@ -15,8 +23,10 @@
     let location = "";
     let employmentType = "";
     let source = window.location.hostname.replace("www.", "");
+    const hostname = window.location.hostname.toLowerCase();
+    const pathname = window.location.pathname;
 
-    // A. Check JSON-LD for JobPosting
+    // A. Check JSON-LD for JobPosting (Highest fidelity)
     const scripts = document.querySelectorAll('script[type="application/ld+json"]');
     for (const script of scripts) {
       try {
@@ -42,21 +52,48 @@
       } catch (e) {}
     }
 
-    // B. Check Meta tags if missing
+    // B. Check known ATS URL patterns before fallbacks
+    if (!company) {
+      if (hostname.includes("greenhouse.io")) {
+        const parts = pathname.split("/").filter(Boolean);
+        if (parts.length > 0 && parts[0] !== "embed" && parts[0] !== "jobs") {
+          company = formatCompanyName(parts[0]);
+        } else if (parts.length > 1 && (parts[0] === "embed" || parts[0] === "jobs")) {
+          company = formatCompanyName(parts[1]);
+        }
+      } else if (hostname.includes("lever.co")) {
+        const parts = pathname.split("/").filter(Boolean);
+        if (parts.length > 0) {
+          company = formatCompanyName(parts[0]);
+        }
+      } else if (hostname.includes("ashbyhq.com")) {
+        const parts = pathname.split("/").filter(Boolean);
+        if (parts.length > 0) {
+          company = formatCompanyName(parts[0]);
+        }
+      } else if (hostname.includes("myworkdayjobs.com")) {
+        const sub = hostname.split(".")[0];
+        if (sub && sub !== "www") {
+          company = formatCompanyName(sub);
+        }
+      }
+    }
+
+    // C. Check Meta tags if missing
     if (!position) {
       const ogTitle = document.querySelector('meta[property="og:title"]')?.content;
       if (ogTitle) {
         const parts = ogTitle.split(/ at | - | \| |: /i);
         if (parts.length >= 2) {
           position = parts[0].trim();
-          company = company || parts[1].trim();
+          company = company || formatCompanyName(parts[1].trim());
         } else {
           position = ogTitle.trim();
         }
       }
     }
 
-    // C. Check Headings & Document Title
+    // D. Check Headings & Document Title
     if (!position) {
       const h1 = document.querySelector("h1");
       if (h1 && h1.innerText.trim()) {
@@ -69,7 +106,7 @@
     if (!company) {
       const hostParts = window.location.hostname.split(".");
       if (hostParts.length > 1) {
-        company = hostParts[hostParts.length - 2].toUpperCase();
+        company = formatCompanyName(hostParts[hostParts.length - 2]);
       } else {
         company = "Target Company";
       }
@@ -92,17 +129,19 @@
     const name = (el.name || "").toLowerCase();
     const id = (el.id || "").toLowerCase();
     const autocomplete = (el.autocomplete || "").toLowerCase();
+    const prompt = (getFieldPrompt(el) || "").toLowerCase();
 
     const sensitiveTerms = [
       "password", "pwd", "token", "otp", "secret", "cvv", "creditcard",
-      "cardnumber", "ssn", "socialsecurity", "bank", "routing", "captcha",
-      "salary_expectation", "pin", "passcode"
+      "cardnumber", "ssn", "socialsecurity", "social_security", "bank", "routing",
+      "captcha", "recaptcha", "salary", "expected_salary", "compensation",
+      "pin", "passcode"
     ];
 
     if (type === "password" || type === "file") return true;
 
     for (const term of sensitiveTerms) {
-      if (name.includes(term) || id.includes(term) || autocomplete.includes(term)) {
+      if (name.includes(term) || id.includes(term) || autocomplete.includes(term) || prompt.includes(term)) {
         return true;
       }
     }
@@ -280,9 +319,17 @@
     return { filledCount, skippedCount, filledDetails, skippedDetails };
   }
 
-  // 7. Monitor Submission
+  // 7. Monitor Submission (only if form has relevant applicant inputs)
   document.addEventListener("submit", function (e) {
-    chrome.runtime.sendMessage({ type: "APPLICATION_SUBMIT_DETECTED" });
+    const form = e.target;
+    if (form && form.elements) {
+      const inputs = Array.from(form.elements).filter(el => 
+        el.tagName !== "BUTTON" && el.type !== "submit" && el.type !== "hidden"
+      );
+      if (inputs.length >= 2) {
+        chrome.runtime.sendMessage({ type: "APPLICATION_SUBMIT_DETECTED" });
+      }
+    }
   }, true);
 
   // Message Listener

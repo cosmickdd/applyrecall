@@ -1,5 +1,6 @@
 import './globals.css';
-import Sidebar from '@/components/Sidebar';
+import { AuthProvider } from '@/lib/auth-context';
+import AppShell from '@/components/AppShell';
 
 export const metadata = {
   title: 'ApplyRecall — Personal Job Application Memory',
@@ -13,11 +14,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-brand-soft min-h-screen text-ink-primary antialiased flex">
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
-          {children}
-        </div>
+      <body className="bg-brand-soft min-h-screen text-ink-primary antialiased">
+        <AuthProvider>
+          <AppShell>
+            {children}
+          </AppShell>
+        </AuthProvider>
       </body>
     </html>
   );

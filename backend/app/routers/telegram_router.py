@@ -1,10 +1,12 @@
 import hmac
+import logging
 from fastapi import APIRouter, Depends, Request, HTTPException, Header
 from typing import Dict, Any, Optional
 from app.config import settings
-from app.database import get_db
+from app.database import get_db, now_iso
 from app.services.telegram_service import handle_telegram_text, send_telegram_message
 
+logger = logging.getLogger("applyrecall.telegram_router")
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
 
@@ -14,33 +16,54 @@ async def telegram_webhook(
     x_telegram_bot_api_secret_token: Optional[str] = Header(None, alias="X-Telegram-Bot-Api-Secret-Token"),
     conn=Depends(get_db),
 ):
-    """Receives webhook updates from Telegram Bot API with secret verification."""
-    # Verify webhook secret if configured
+    """
+    Receives webhook updates from Telegram Bot API with constant-time secret verification
+    and transactional idempotency lifecycle (received -> processing -> processed / failed).
+    """
+    # 1. Webhook secret verification (Mandatory in production)
+    if settings.is_production and not settings.TELEGRAM_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="TELEGRAM_WEBHOOK_SECRET must be configured in production.")
+
     if settings.TELEGRAM_WEBHOOK_SECRET:
         if not x_telegram_bot_api_secret_token or not hmac.compare_digest(
             x_telegram_bot_api_secret_token, settings.TELEGRAM_WEBHOOK_SECRET
         ):
-            raise HTTPException(status_code=403, detail="Invalid webhook secret.")
+            raise HTTPException(status_code=403, detail="Invalid or missing webhook secret token.")
 
     data = await request.json()
-
-    # Deduplicate updates using update_id
     update_id = data.get("update_id")
-    if update_id:
+
+    # 2. Idempotency Check & Transactional Lifecycle
+    if update_id is not None:
         cursor = await conn.execute(
-            "SELECT update_id FROM telegram_processed_updates WHERE update_id = ?",
+            "SELECT update_id, status FROM telegram_processed_updates WHERE update_id = ?",
             (update_id,),
         )
-        if await cursor.fetchone():
-            return {"status": "duplicate_ignored"}
+        existing = await cursor.fetchone()
+        if existing:
+            st = existing["status"] if isinstance(existing, dict) or hasattr(existing, "__getitem__") else existing[1]
+            if st == "processed":
+                return {"status": "duplicate_ignored", "update_id": update_id}
+            elif st == "processing":
+                return {"status": "in_progress", "update_id": update_id}
+
+        # Mark update as processing
+        now = now_iso()
         await conn.execute(
-            "INSERT INTO telegram_processed_updates (update_id) VALUES (?)",
-            (update_id,),
+            "INSERT INTO telegram_processed_updates (update_id, status, created_at) VALUES (?, 'processing', ?)"
+            " ON CONFLICT(update_id) DO UPDATE SET status = 'processing';",
+            (update_id, now),
         )
         await conn.commit()
 
     message = data.get("message") or data.get("edited_message")
     if not message:
+        if update_id is not None:
+            await conn.execute(
+                "UPDATE telegram_processed_updates SET status = 'processed', processed_at = ? WHERE update_id = ?",
+                (now_iso(), update_id),
+            )
+            await conn.commit()
         return {"status": "ignored"}
 
     chat = message.get("chat", {})
@@ -48,8 +71,26 @@ async def telegram_webhook(
     text = message.get("text", "")
 
     if chat_id and text:
-        reply = await handle_telegram_text(conn, chat_id, text)
-        await send_telegram_message(chat_id, reply)
+        try:
+            reply = await handle_telegram_text(conn, chat_id, text)
+            await send_telegram_message(chat_id, reply)
+
+            # Mark update permanently processed upon successful completion
+            if update_id is not None:
+                await conn.execute(
+                    "UPDATE telegram_processed_updates SET status = 'processed', processed_at = ? WHERE update_id = ?",
+                    (now_iso(), update_id),
+                )
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Error processing Telegram update {update_id}: {e}", exc_info=True)
+            if update_id is not None:
+                await conn.execute(
+                    "UPDATE telegram_processed_updates SET status = 'failed' WHERE update_id = ?",
+                    (update_id,),
+                )
+                await conn.commit()
+            raise HTTPException(status_code=500, detail="Failed to process Telegram update.")
 
     return {"status": "ok"}
 

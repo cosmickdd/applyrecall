@@ -8,10 +8,14 @@ from app.routers import auth, profile, answers, applications, reminders, dashboa
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: ensure database schema and starter data
+    # Startup: validate production requirements and initialize database schema
+    settings.validate_production()
     await init_db()
     yield
-    # Shutdown
+    # Shutdown: close database connection pool
+    if settings.use_postgres:
+        from app.database import close_pg_pool
+        await close_pg_pool()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

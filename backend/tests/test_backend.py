@@ -60,9 +60,10 @@ def test_jwt_validation_flow():
         try:
             now_ts = int(datetime.now(timezone.utc).timestamp())
             
-            # 1. Valid JWT
+            # 1. Valid Supabase JWT with aud="authenticated"
             valid_payload = {
                 "sub": DEV_USER_ID,
+                "aud": "authenticated",
                 "iat": now_ts,
                 "exp": now_ts + 3600,
                 "iss": "https://test.supabase.co/auth/v1"
@@ -78,6 +79,7 @@ def test_jwt_validation_flow():
                 # 2. Expired JWT -> 401
                 expired_payload = {
                     "sub": DEV_USER_ID,
+                    "aud": "authenticated",
                     "iat": now_ts - 7200,
                     "exp": now_ts - 3600,
                 }
@@ -86,8 +88,15 @@ def test_jwt_validation_flow():
                 assert r_exp.status_code == 401
                 assert "expired" in r_exp.json()["detail"].lower()
 
-                # 3. Wrong secret -> 401
-                wrong_token = jwt.encode(valid_payload, "wrong-secret", algorithm="HS256")
+                # 3. Wrong audience -> 401
+                bad_aud_payload = {**valid_payload, "aud": "other_service"}
+                bad_aud_token = jwt.encode(bad_aud_payload, test_secret, algorithm="HS256")
+                r_aud = await client.get("/api/profile", headers={"Authorization": f"Bearer {bad_aud_token}"})
+                assert r_aud.status_code == 401
+                assert "audience" in r_aud.json()["detail"].lower()
+
+                # 4. Wrong secret -> 401
+                wrong_token = jwt.encode(valid_payload, "wrong-secret-long-enough-32-bytes-key!!", algorithm="HS256")
                 r_wrong = await client.get("/api/profile", headers={"Authorization": f"Bearer {wrong_token}"})
                 assert r_wrong.status_code == 401
         finally:
@@ -240,6 +249,10 @@ def test_telegram_assistant():
             """, (new_uuid(), DEV_USER_ID, chat_id, now_iso()))
             await conn.commit()
             
+            # Clean any leftover Acme records from previous runs to ensure unambiguous match
+            await conn.execute("DELETE FROM applications WHERE user_id = ? AND lower(company) LIKE '%acme innovations%'", (DEV_USER_ID,))
+            await conn.commit()
+
             # Test summary
             resp = await handle_telegram_text(conn, chat_id, "/summary")
             assert "applications tracked" in resp
@@ -294,6 +307,7 @@ def test_telegram_webhook_secret_and_deduplication():
 
 def test_reminder_system_and_terminal_statuses():
     async def _run():
+        from unittest.mock import patch
         await init_db()
         async with aiosqlite.connect(settings.SQLITE_PATH) as conn:
             conn.row_factory = aiosqlite.Row
@@ -326,18 +340,28 @@ def test_reminder_system_and_terminal_statuses():
             INSERT INTO reminders (id, user_id, application_id, reminder_at, type, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'follow_up', 'pending', ?, ?)
             """, (rem_active_id, DEV_USER_ID, active_app_id, past_time, now, now))
+
+            # Link telegram connection
+            chat_id = "test_chat_delivery"
+            await conn.execute("""
+            INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1;
+            """, (new_uuid(), DEV_USER_ID, chat_id, now))
             
             await conn.commit()
             
-            # Process reminders
-            results = await process_due_reminders(conn)
+            # Process reminders with confirmed delivery
+            with patch("app.services.reminder_service.send_telegram_message") as mock_send:
+                mock_send.return_value = (True, "Delivered")
+                results = await process_due_reminders(conn)
             
-            # Verify rejected reminder was cancelled
+            # Verify rejected reminder was auto-cancelled immediately
             cursor = await conn.execute("SELECT status FROM reminders WHERE id = ?", (rem_rejected_id,))
             row = await cursor.fetchone()
             assert row["status"] == "cancelled"
             
-            # Verify active reminder was marked sent (notified)
+            # Verify active reminder was marked sent with confirmed delivery
             cursor = await conn.execute("SELECT status, sent_at FROM reminders WHERE id = ?", (rem_active_id,))
             row = await cursor.fetchone()
             assert row["status"] in ("sent", "completed")
@@ -345,8 +369,10 @@ def test_reminder_system_and_terminal_statuses():
             
     asyncio.run(_run())
 
-def test_reminder_retry_exponential_backoff():
+def test_reminder_retry_exponential_backoff_and_stale_recovery():
     async def _run():
+        from unittest.mock import patch
+        from app.services.reminder_service import recover_stale_processing_reminders, RETRY_DELAYS_MINUTES
         await init_db()
         async with aiosqlite.connect(settings.SQLITE_PATH) as conn:
             conn.row_factory = aiosqlite.Row
@@ -365,14 +391,45 @@ def test_reminder_retry_exponential_backoff():
             INSERT INTO reminders (id, user_id, application_id, reminder_at, type, status, attempts, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'follow_up', 'pending', 0, ?, ?)
             """, (rem_id, DEV_USER_ID, app_id, past_time, now, now))
+
+            # Ensure telegram connection exists
+            chat_id = "test_chat_retry_user"
+            await conn.execute("""
+            INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1;
+            """, (new_uuid(), DEV_USER_ID, chat_id, now))
             await conn.commit()
 
-            # Process due reminders
-            results = await process_due_reminders(conn)
-            cursor = await conn.execute("SELECT status, attempts, sent_at FROM reminders WHERE id = ?", (rem_id,))
+            # Process due reminders when delivery fails (e.g. network/token issue)
+            with patch("app.services.reminder_service.send_telegram_message") as mock_send:
+                mock_send.return_value = (False, "Telegram API Timeout")
+                results = await process_due_reminders(conn)
+
+            cursor = await conn.execute("SELECT status, attempts, next_retry_at, error_message FROM reminders WHERE id = ?", (rem_id,))
             row = await cursor.fetchone()
-            assert row["attempts"] >= 1
-            assert row["status"] in ("sent", "completed")
+            assert row["attempts"] == 1
+            assert row["status"] == "failed"
+            assert row["next_retry_at"] is not None
+            assert "Timeout" in row["error_message"]
+
+            # Test stale-claim recovery: set processing_started_at to 15 minutes ago
+            stale_time = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+            await conn.execute("""
+            UPDATE reminders
+            SET status = 'processing', processing_started_at = ?
+            WHERE id = ?
+            """, (stale_time, rem_id))
+            await conn.commit()
+
+            recovered = await recover_stale_processing_reminders(conn)
+            assert recovered >= 1
+
+            cursor = await conn.execute("SELECT status, processing_started_at FROM reminders WHERE id = ?", (rem_id,))
+            row = await cursor.fetchone()
+            assert row["status"] == "pending"
+            assert row["processing_started_at"] is None
+
     asyncio.run(_run())
 
 def test_user_privacy_isolation():
@@ -416,3 +473,86 @@ def test_user_privacy_isolation():
             assert await cursor.fetchone() is None
 
     asyncio.run(_run())
+
+def test_application_answers_recording():
+    async def _run():
+        await init_db()
+        transport = ASGITransport(app=app)
+        auth_headers = {"Authorization": f"Bearer {DEV_USER_ID}"}
+        unique_suffix = new_uuid()[:8]
+        comp_name = f"AnswerCo_{unique_suffix}"
+        q_text = f"Why work at {comp_name}?"
+        a_text = f"Because {comp_name} builds incredible tech."
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Create a source answer
+            r_ans = await client.post("/api/answers", headers=auth_headers, json={
+                "question": q_text,
+                "answer": a_text,
+                "scope": "general"
+            })
+            assert r_ans.status_code == 200
+            ans_id = r_ans.json()["id"]
+
+            # 2. Create an application
+            r_app = await client.post("/api/applications", headers=auth_headers, json={
+                "company": comp_name,
+                "position": "Backend Intern",
+                "status": "Saved"
+            })
+            assert r_app.status_code == 200
+            app_id = r_app.json()["id"]
+
+            # 3. Confirm applied with used_answers list
+            r_confirm = await client.post(f"/api/applications/{app_id}/confirm-applied", headers=auth_headers, json={
+                "create_reminder": True,
+                "reminder_days": 7,
+                "used_answers": [
+                    {
+                        "source_answer_id": ans_id,
+                        "question": q_text,
+                        "answer": a_text,
+                        "field_name": "cover_letter_field"
+                    }
+                ]
+            })
+            assert r_confirm.status_code == 200
+
+            # 4. Query application and verify answers attached
+            r_get = await client.get(f"/api/applications/{app_id}", headers=auth_headers)
+            assert r_get.status_code == 200
+            app_data = r_get.json()
+            assert "answers" in app_data
+            assert len(app_data["answers"]) >= 1
+            assert app_data["answers"][0]["source_answer_id"] == ans_id
+
+            # 5. Verify source answer last_used_at was updated
+            r_ans_get = await client.get("/api/answers", headers=auth_headers)
+            assert r_ans_get.status_code == 200
+            matched_ans = [a for a in r_ans_get.json() if a["id"] == ans_id]
+            assert len(matched_ans) == 1
+            assert matched_ans[0]["last_used_at"] is not None
+
+    asyncio.run(_run())
+
+def test_convert_placeholders_to_pg():
+    from app.database import convert_placeholders_to_pg
+    sql = "SELECT * FROM applications WHERE user_id = ? AND status = ? AND company = 'Who?';"
+    converted = convert_placeholders_to_pg(sql)
+    assert "$1" in converted
+    assert "$2" in converted
+    assert "'Who?'" in converted  # Quoted literal with '?' must NOT be converted to $3!
+
+def test_production_database_validation():
+    orig_env = settings.APP_ENV
+    orig_db = settings.DATABASE_URL
+    try:
+        settings.APP_ENV = "production"
+        settings.DATABASE_URL = ""
+        with pytest.raises(RuntimeError) as exc_info:
+            settings.validate_production()
+        assert "DATABASE_URL" in str(exc_info.value)
+    finally:
+        settings.APP_ENV = orig_env
+        settings.DATABASE_URL = orig_db
+

@@ -11,10 +11,12 @@ import {
   Settings, 
   Send, 
   Puzzle,
-  ChevronRight
+  ChevronRight,
+  LogOut
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
@@ -28,10 +30,20 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [summary, setSummary] = useState<any>(null);
+  const { user, profile, signOut } = useAuth();
 
   useEffect(() => {
     api.getSummary().then(setSummary).catch(() => {});
   }, [pathname]);
+
+  const displayName = profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : 'Alex Morgan');
+  const displayEmail = profile?.email || user?.email || 'alex.morgan@stanford.edu';
+  const initials = displayName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase() || 'AM';
 
   return (
     <aside className="w-[236px] bg-brand-surface border-r border-edge-default flex flex-col justify-between h-screen sticky top-0 select-none z-30">
@@ -117,18 +129,27 @@ export default function Sidebar() {
         </div>
 
         {/* User Card */}
-        <div className="flex items-center gap-3 px-2 py-1.5 rounded-btn hover:bg-brand-subtle transition-colors cursor-pointer">
-          <div className="w-8 h-8 rounded-full bg-slate-200 text-ink-primary font-bold text-xs flex items-center justify-center border border-edge-default">
-            AM
-          </div>
-          <div className="overflow-hidden flex-1">
-            <span className="text-[13px] font-semibold text-ink-primary block truncate leading-tight">
-              Alex Morgan
-            </span>
-            <span className="text-[11px] text-ink-muted block truncate">
-              alex.morgan@stanford.edu
-            </span>
-          </div>
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-btn hover:bg-brand-subtle transition-colors">
+          <Link href="/profile" className="flex items-center gap-3 overflow-hidden flex-1 cursor-pointer">
+            <div className="w-8 h-8 rounded-full bg-brand-blue/10 text-brand-blue font-bold text-xs flex items-center justify-center border border-edge-default flex-shrink-0">
+              {initials}
+            </div>
+            <div className="overflow-hidden flex-1">
+              <span className="text-[13px] font-semibold text-ink-primary block truncate leading-tight">
+                {displayName}
+              </span>
+              <span className="text-[11px] text-ink-muted block truncate">
+                {displayEmail}
+              </span>
+            </div>
+          </Link>
+          <button
+            onClick={() => signOut()}
+            title="Sign out"
+            className="p-1.5 text-ink-muted hover:text-rose-600 hover:bg-rose-50 rounded-btn transition-colors flex-shrink-0"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </aside>

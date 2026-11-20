@@ -139,10 +139,25 @@ class ApplicationResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
+class ApplicationAnswerCreate(BaseModel):
+    question: str
+    answer: str
+    source_answer_id: Optional[str] = None
+
+class ApplicationAnswerResponse(BaseModel):
+    id: str
+    user_id: str
+    application_id: str
+    question: str
+    answer: str
+    source_answer_id: Optional[str] = None
+    created_at: str
+
 class ConfirmAppliedRequest(BaseModel):
     applied_at: Optional[str] = None
     create_reminder: bool = True
     reminder_days: int = 7
+    used_answers: Optional[List[ApplicationAnswerCreate]] = None
 
 class ApplicationEventCreate(BaseModel):
     event_type: str

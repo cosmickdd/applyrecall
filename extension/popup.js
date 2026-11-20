@@ -1,7 +1,7 @@
 // ApplyRecall Extension Popup Logic
 // Connects to backend with secure device token, tab-scoped context, answers matching, and safe autofill.
 
-const API_BASE = "http://localhost:8000/api";
+let API_BASE = "http://localhost:8000/api";
 
 document.addEventListener("DOMContentLoaded", async () => {
   const stateNotConnected = document.getElementById("state-not-connected");
@@ -10,6 +10,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   const connectionBadge = document.getElementById("connection-badge");
   const userInfoFooter = document.getElementById("user-info-footer");
   const toastEl = document.getElementById("status-toast");
+  const apiUrlInput = document.getElementById("api-url-input");
+  const saveApiUrlBtn = document.getElementById("save-api-url-btn");
+
+  // Load configured API URL if saved
+  chrome.storage.sync.get(["api_base_url"], (cfg) => {
+    if (cfg && cfg.api_base_url) {
+      API_BASE = cfg.api_base_url;
+    }
+    if (apiUrlInput) {
+      apiUrlInput.value = API_BASE;
+    }
+  });
+
+  if (saveApiUrlBtn && apiUrlInput) {
+    saveApiUrlBtn.addEventListener("click", () => {
+      const url = apiUrlInput.value.trim().replace(/\/+$/, "");
+      if (url) {
+        API_BASE = url;
+        chrome.storage.sync.set({ api_base_url: url }, () => {
+          showToast("API Server URL saved.");
+        });
+      }
+    });
+  }
 
   // Job elements
   const jobCompanyEl = document.getElementById("job-company");
@@ -98,6 +122,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       headers["X-Device-Token"] = currentContext.deviceToken;
     }
     return headers;
+  }
+
+  async function apiFetch(path, options = {}) {
+    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+    const headers = {
+      ...getAuthHeaders(),
+      ...(options.headers || {})
+    };
+
+    const resp = await fetch(url, {
+      ...options,
+      headers
+    });
+
+    if (resp.status === 401) {
+      // Clear revoked or expired token
+      chrome.storage.local.remove(["device_token", "user_profile"]);
+      currentContext.deviceToken = null;
+      currentContext.profile = null;
+      renderDisconnectedState();
+      showToast("Device session expired or revoked. Please reconnect.", "error");
+      throw new Error("Device authorization expired (401).");
+    }
+
+    return resp;
   }
 
   function renderConnectedState() {
@@ -284,9 +333,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       startAppBtn.textContent = "Saving Context...";
-      const resp = await fetch(`${API_BASE}/applications`, {
+      const resp = await apiFetch("/applications", {
         method: "POST",
-        headers: getAuthHeaders(),
         body: JSON.stringify({
           company: currentContext.job.company,
           position: currentContext.job.position,
@@ -337,9 +385,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       for (const field of currentContext.fields) {
         if (field.isLongText && field.prompt) {
           try {
-            const matchResp = await fetch(`${API_BASE}/answers/match`, {
+            const matchResp = await apiFetch("/answers/match", {
               method: "POST",
-              headers: getAuthHeaders(),
               body: JSON.stringify({
                 question: field.prompt,
                 company: company,
@@ -431,9 +478,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       saveAnswerBtn.textContent = "Saving...";
       saveAnswerBtn.disabled = true;
 
-      const resp = await fetch(`${API_BASE}/answers`, {
+      const resp = await apiFetch("/answers", {
         method: "POST",
-        headers: getAuthHeaders(),
         body: JSON.stringify({
           question: q,
           answer: a,
@@ -465,9 +511,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!currentContext.application) {
       const comp = currentContext.job ? currentContext.job.company : "Target Company";
       const pos = currentContext.job ? currentContext.job.position : "Role";
-      const resp = await fetch(`${API_BASE}/applications`, {
+      const resp = await apiFetch("/applications", {
         method: "POST",
-        headers: getAuthHeaders(),
         body: JSON.stringify({
           company: comp,
           position: pos,
@@ -483,9 +528,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       try {
         confirmAppliedBtn.textContent = "Saving...";
         const shouldSchedule = reminderCheck.checked;
-        const resp = await fetch(`${API_BASE}/applications/${currentContext.application.id}/confirm-applied`, {
+        const resp = await apiFetch(`/applications/${currentContext.application.id}/confirm-applied`, {
           method: "POST",
-          headers: getAuthHeaders(),
           body: JSON.stringify({
             create_reminder: shouldSchedule,
             reminder_days: 7

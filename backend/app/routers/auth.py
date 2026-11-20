@@ -42,44 +42,89 @@ def _hash_token(token: str) -> str:
 def _validate_supabase_jwt(token: str) -> str:
     """
     Validates a Supabase-issued JWT and returns the user_id (sub claim).
-    Checks: signature, expiry, issuer structure.
+    Checks:
+    - Signature (HS256 with SUPABASE_JWT_SECRET or RS256/ES256 with Supabase JWKS)
+    - Expiry (exp claim)
+    - Issued-at (iat claim)
+    - Audience (must be 'authenticated' as issued by Supabase Auth)
+    - Issuer (must match Supabase project if SUPABASE_URL configured)
+    - Subject (sub claim must be present and non-empty)
     """
-    if not settings.SUPABASE_JWT_SECRET:
+    # 1. Decode unverified header to inspect algorithm and kid
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Malformed JWT header structure.")
+
+    alg = unverified_header.get("alg")
+    if not alg or alg not in settings.JWT_ALLOWED_ALGORITHMS:
         raise HTTPException(
-            status_code=500,
-            detail="Server authentication not configured. SUPABASE_JWT_SECRET is missing."
+            status_code=401,
+            detail=f"Unsupported signing algorithm '{alg}'. Allowed: {', '.join(settings.JWT_ALLOWED_ALGORITHMS)}"
         )
 
+    # 2. Determine verification key
+    key = None
+    if alg == "HS256":
+        if not settings.SUPABASE_JWT_SECRET:
+            raise HTTPException(
+                status_code=500,
+                detail="Server authentication not configured. SUPABASE_JWT_SECRET is missing."
+            )
+        key = settings.SUPABASE_JWT_SECRET
+    elif alg in ("RS256", "ES256"):
+        if settings.SUPABASE_URL:
+            try:
+                jwks_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+                jwks_client = jwt.PyJWKClient(jwks_url)
+                signing_key = jwks_client.get_signing_key_from_jwt(token)
+                key = signing_key.key
+            except Exception as e:
+                raise HTTPException(status_code=401, detail=f"Failed to resolve JWKS key: {str(e)}")
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Asymmetric JWT verification requires configured SUPABASE_URL."
+            )
+
+    # 3. Decode and verify payload
+    expected_issuer = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1" if settings.SUPABASE_URL else None
+    decode_options = {
+        "require": ["sub", "exp", "iat", "aud"],
+        "verify_exp": True,
+        "verify_iat": True,
+        "verify_aud": True,
+    }
+    if expected_issuer:
+        decode_options["verify_iss"] = True
+
     try:
-        # Supabase JWTs use HS256 with the JWT secret from project settings
         payload = jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={
-                "require": ["sub", "exp", "iat"],
-                "verify_exp": True,
-                "verify_iat": True,
-            },
-            # Supabase issuer format: https://<project-ref>.supabase.co/auth/v1
-            # We validate it's present and from supabase
-            audience=None,  # Supabase doesn't set aud by default for user JWTs
+            key,
+            algorithms=[alg],
+            audience=settings.JWT_AUDIENCE,
+            issuer=expected_issuer,
+            options=decode_options,
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired. Please sign in again.")
+    except jwt.InvalidAudienceError:
+        raise HTTPException(status_code=401, detail=f"Invalid token audience. Expected '{settings.JWT_AUDIENCE}'.")
+    except jwt.InvalidIssuerError:
+        raise HTTPException(status_code=401, detail="Invalid token issuer.")
+    except jwt.InvalidSignatureError:
+        raise HTTPException(status_code=401, detail="Invalid token signature.")
+    except jwt.MissingRequiredClaimError as e:
+        raise HTTPException(status_code=401, detail=f"Token missing required claim: {str(e)}")
     except jwt.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Invalid authentication token: {str(e)}")
 
     user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Token missing user identity (sub claim).")
+    if not user_id or not str(user_id).strip():
+        raise HTTPException(status_code=401, detail="Token subject claim is missing or empty.")
 
-    # Validate issuer contains supabase if SUPABASE_URL is set
-    iss = payload.get("iss", "")
-    if settings.SUPABASE_URL and "supabase" not in iss:
-        raise HTTPException(status_code=401, detail="Token issuer not recognized.")
-
-    return user_id
+    return str(user_id)
 
 
 def _validate_device_token(token: str, conn) -> str:
@@ -141,20 +186,25 @@ async def get_current_user_id(
 
     token = parts[1].strip()
 
-    # Try Supabase JWT validation first
-    if settings.SUPABASE_JWT_SECRET:
+    # If the token is in JWT format (3 dot-separated base64 segments) or we are in production, validate JWT
+    if token.count(".") == 2 or settings.is_production:
         return _validate_supabase_jwt(token)
 
-    # Development-only fallback: accept UUID-format bearer tokens
+    # In development mode, check if SUPABASE_JWT_SECRET is explicitly configured
+    if settings.SUPABASE_JWT_SECRET:
+        try:
+            return _validate_supabase_jwt(token)
+        except HTTPException:
+            pass
+
+    # Development-only fallback: accept UUID-format bearer tokens when user exists
     if not settings.is_production:
-        # Validate it looks like a UUID (basic check)
         import re
         uuid_pattern = re.compile(
             r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
             re.IGNORECASE
         )
         if uuid_pattern.match(token):
-            # Verify user exists in database
             cursor = await conn.execute(
                 "SELECT user_id FROM profiles WHERE user_id = ?", (token,)
             )

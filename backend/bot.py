@@ -1,9 +1,8 @@
 import asyncio
 import logging
 import httpx
-import aiosqlite
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, get_db_context
 from app.services.telegram_service import handle_telegram_text, send_telegram_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -38,8 +37,7 @@ async def run_bot_polling():
                         text = msg.get("text", "")
                         
                         if chat_id and text:
-                            async with aiosqlite.connect(settings.SQLITE_PATH) as conn:
-                                conn.row_factory = aiosqlite.Row
+                            async with get_db_context() as conn:
                                 reply = await handle_telegram_text(conn, chat_id, text)
                             await send_telegram_message(chat_id, reply)
             except Exception as e:

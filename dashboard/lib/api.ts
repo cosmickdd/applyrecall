@@ -19,9 +19,13 @@ function getAuthHeader(): Record<string, string> {
     }
   }
 
-  // Development mode fallback
-  const devToken = process.env.NEXT_PUBLIC_DEV_USER_ID || '00000000-0000-0000-0000-000000000001';
-  return { 'Authorization': `Bearer ${devToken}` };
+  // Development mode fallback only when explicitly not in production
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction && process.env.NEXT_PUBLIC_DEV_USER_ID) {
+    return { 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_DEV_USER_ID}` };
+  }
+
+  return {};
 }
 
 async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -37,6 +41,12 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('applyrecall_token');
+      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/signup')) {
+        window.location.href = '/login';
+      }
+    }
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.detail || `HTTP Error ${response.status}`);
   }
@@ -70,6 +80,11 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ create_reminder: createReminder, reminder_days: reminderDays })
   }),
+  recordApplicationAnswer: (id: string, data: { source_answer_id?: string; question: string; answer: string; field_name?: string }) =>
+    fetcher<any>(`/applications/${id}/answers`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
   getFollowUpDraft: (id: string, data?: { hr_email?: string; recipient_name?: string; notes?: string }) =>
     fetcher<any>(`/applications/${id}/followup-draft`, {
       method: 'POST',
