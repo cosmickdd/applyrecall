@@ -20,8 +20,10 @@ import { api } from '@/lib/api';
 export default function SettingsPage() {
   const [extCode, setExtCode] = useState<string | null>(null);
   const [extLoading, setExtLoading] = useState(false);
+  const [extError, setExtError] = useState<string | null>(null);
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [tgLoading, setTgLoading] = useState(false);
+  const [tgError, setTgError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Telegram simulator state
@@ -35,10 +37,12 @@ export default function SettingsPage() {
   const generateExtensionCode = async () => {
     try {
       setExtLoading(true);
+      setExtError(null);
       const res = await api.generatePairingCode('extension');
       setExtCode(res.code);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setExtError(e.message || 'Failed to generate extension pairing code');
     } finally {
       setExtLoading(false);
     }
@@ -47,10 +51,12 @@ export default function SettingsPage() {
   const generateTelegramCode = async () => {
     try {
       setTgLoading(true);
+      setTgError(null);
       const res = await api.generatePairingCode('telegram');
       setTgCode(res.code);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setTgError(e.message || 'Failed to generate Telegram pairing code');
     } finally {
       setTgLoading(false);
     }
@@ -122,6 +128,19 @@ export default function SettingsPage() {
               Generate a temporary 6-character code and enter it into the ApplyRecall extension popup. Valid for 15 minutes.
             </p>
 
+            {extError && (
+              <div className="p-2.5 rounded-btn bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {extError}
+              </div>
+            )}
+
+            {extCode && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-btn text-xs text-status-success font-medium flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>Active code generated! Enter <strong>{extCode}</strong> in your extension popup.</span>
+              </div>
+            )}
+
             <div className="p-4 bg-brand-soft rounded-btn border border-edge-default flex items-center justify-between">
               <div>
                 <span className="text-[11px] font-semibold text-ink-muted block uppercase tracking-wider">Extension Pairing Code</span>
@@ -164,6 +183,19 @@ export default function SettingsPage() {
             <p className="text-xs text-ink-secondary leading-relaxed">
               Generate a code, open Telegram, and send: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-brand-blue font-mono font-bold">/link YOUR_CODE</code>
             </p>
+
+            {tgError && (
+              <div className="p-2.5 rounded-btn bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {tgError}
+              </div>
+            )}
+
+            {tgCode && (
+              <div className="p-2.5 bg-sky-50 border border-sky-200 rounded-btn text-xs text-sky-700 font-medium flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>Active code generated! Send <strong>/link {tgCode}</strong> to your Telegram bot.</span>
+              </div>
+            )}
 
             <div className="p-4 bg-brand-soft rounded-btn border border-edge-default flex items-center justify-between">
               <div>
