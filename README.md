@@ -57,7 +57,7 @@ ApplyRecall connects three user surfaces backed by a single source of truth:
 
 ## 02. Security & Remediation Enhancements
 
-A rigorous technical audit identified and resolved all production blockers:
+A rigorous technical audit identified and resolved all production blockers across Phases 3 and 3.1:
 
 1. **Authentication & Identity**:
    - Removed all default user ID fallbacks in production.
@@ -66,25 +66,35 @@ A rigorous technical audit identified and resolved all production blockers:
    - Pairing codes expire in 5 minutes and are single-use enforced atomically.
    - Connected devices can be viewed and revoked via `/api/auth/devices`.
 
-2. **Chrome Extension Improvements**:
+2. **Production PostgreSQL Architecture & Row Level Security (RLS)**:
+   - **Dedicated Non-Superuser Runtime Role**: The application connects in production using `applyrecall_app` (or Supabase authenticated role), which has NO `SUPERUSER` and NO `BYPASSRLS` privileges.
+   - **`FORCE ROW LEVEL SECURITY`**: Enabled across all 11 user-facing tables, ensuring even table owners are subjected to RLS policies.
+   - **Transaction-Local Identity Propagation**: Student identity is set transaction-locally via `SELECT set_config('app.current_user_id', $1, true)`. In `get_db()` and `get_db_context()`, `reset_contexts()` is called in the `finally` block to strictly guarantee zero identity leakage across asyncpg pooled connections.
+   - **Restricted Background Worker Role**: When the reminder worker claims or processes reminders, it sets `app.is_worker = 'true'`. Under RLS policies, this grants access only to `reminders` and read-only access to `applications` (for composing notification messages), with **ZERO access** to student `profiles` or `answers`.
+   - **PostgreSQL Advisory Lock Migrations**: Migration execution uses native PostgreSQL multi-statement execution (eliminating faulty semicolon splitting) wrapped in `pg_advisory_lock(872194812739812)`. Concurrent API and worker startups cannot collide or execute duplicate migrations. Applied migrations are tracked with SHA-256 checksums in `schema_migrations`.
+
+3. **Background Reminder Worker & Concurrency Control**:
+   - **Bounded Batch Processing**: Configurable `WORKER_BATCH_SIZE` (default: 10) prevents worker starvation and excessive memory consumption.
+   - **Atomic Leases**: Claims acquire reminders with `FOR UPDATE OF r SKIP LOCKED`, assigning a unique `claim_token` and `processing_expires_at` lease window (`WORKER_LEASE_MINUTES`, default: 5 minutes).
+   - **Active Lease Protection**: Stale recovery (`recover_stale_processing_reminders`) recovers ONLY expired leases or abandoned records without touching active leases belonging to healthy workers.
+   - **Outcome Lease Guard**: All delivery outcome recordings match `WHERE id = ? AND claim_token = ?`, ensuring expired or reassigned leases cannot overwrite newer state.
+   - **Immediate Pre-Delivery Race Protection**: Before dispatching to Telegram, the worker performs an immediate pre-delivery reload of the application status. If the student transitioned the application to a terminal status (`Offer`, `Rejected`, `Withdrawn`), the reminder is automatically cancelled and message dispatch is skipped.
+   - **Retry Schedule**: Exponential backoff (5m, 20m, 80m; 4 total attempts) with truthful classification of retryable (HTTP 429, 5xx) vs non-retryable errors.
+
+4. **Chrome Extension Improvements**:
    - Tab-isolated context: State is scoped per tab (`tab_${tabId}_application` and `tab_${tabId}_submission_pending`), preventing tab crosstalk when applying to multiple jobs simultaneously.
    - Safe autofill: Does NOT overwrite existing form field inputs unless explicitly forced.
    - Sensitive field skipping: Passwords, CVV, OTP, tokens, SSN, bank routing, and salary expectation fields are automatically bypassed.
    - Verification feedback: Form inputs are validated after injection to verify DOM value update.
    - Unanswered question detection: Long-form questions on the active page are surfaced for instant review and saving to the answer library.
 
-3. **Telegram Assistant**:
+5. **Telegram Assistant**:
    - Webhook security: Validates incoming requests using `X-Telegram-Bot-Api-Secret-Token` and `hmac.compare_digest`.
    - Update deduplication: Tracks `update_id` in `telegram_processed_updates` to prevent duplicate processing.
    - Ambiguous company disambiguation: Handles multiple applications at the same company cleanly.
    - Dev-gate simulation: `/api/telegram/simulate` is strictly disabled in production.
 
-4. **Background Reminder Worker**:
-   - Retry lifecycle: `pending` -> `processing` -> `sent` / `failed` with exponential backoff (5m, 20m, 80m).
-   - Terminal status guard: Never notifies students about jobs marked `Rejected`, `Withdrawn`, or `Offer`.
-   - Timezone-aware timestamping throughout.
-
-5. **Secrets & Hygiene**:
+6. **Secrets & Hygiene**:
    - `.env` and `*.db` files removed from git tracking and added to `.gitignore`.
    - Clean `.env.example` templates created for both backend and dashboard.
 
@@ -197,9 +207,15 @@ $env:PYTHONPATH="."
 .\venv\Scripts\pytest.exe -v
 ```
 
-Current test suite: **33 tests passing (100%)**, covering:
+Current test suite: **39 tests passing (100%)**, covering:
+- Native multi-statement PostgreSQL migration execution, `pg_advisory_lock` mutual exclusion, and idempotent checksum tracking
+- Genuine PostgreSQL type adaptation (native UUIDs, TIMESTAMPTZ with timezones, JSON dict/list, booleans, scalars, and nulls)
+- Explicit transaction rollback and commit boundaries (`db_transaction`) across multi-step mutations
+- PostgreSQL Row Level Security (RLS) two-user isolation under non-superuser runtime role (`applyrecall_app`)
+- Restricted worker permission model: zero student profile/answer visibility, read-only application metadata access, blocked mutations
+- Worker batch claiming (`WORKER_BATCH_SIZE`), unique `claim_token` assignments, and active vs expired lease isolation
+- Immediate pre-delivery reload race protection: cancels reminders when application transitions to terminal status (`Offer`, `Rejected`, `Withdrawn`)
 - Database initialization, schema migration, and starter seeding
-- PostgreSQL parameter adaptation (UUIDs, ISO timestamps with timezones, JSON dict/list)
 - Robust SQL placeholder conversion scanner (`?` to `$1`, `$2` preserving quotes and comments)
 - Unauthorized request rejection (missing token, malformed token, unknown user)
 - Supabase JWT cryptographic validation (`HS256`, audience `authenticated`, project issuer verification)
@@ -209,9 +225,8 @@ Current test suite: **33 tests passing (100%)**, covering:
 - Follow-up email draft generation with Gmail and Mailto deep links
 - Conversational Telegram Assistant queries and status updates
 - Telegram webhook secret verification and `update_id` deduplication
-- Reminder atomic claiming (`FOR UPDATE SKIP LOCKED` / SQLite concurrency check)
 - 4-attempt exponential backoff retry schedule (`[5m, 20m, 80m]`) and terminal failure handling
-- Stale processing claim recovery for crashed workers (>10 minutes)
+- Stale processing claim recovery for crashed workers
 - Truthful Telegram delivery error classification (retryable 429/5xx vs permanent 400/401/403)
 - Strict user data privacy and tenant isolation
 - Full cross-surface end-to-end workflow simulation

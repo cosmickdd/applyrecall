@@ -76,20 +76,27 @@ async def send_telegram_message(
         return TelegramSendResult(False, f"Telegram unexpected error: {str(e)}", retryable=False)
 
 async def get_user_by_chat_id(conn, chat_id: str) -> Optional[str]:
+    if hasattr(conn, "set_system_context"):
+        await conn.set_system_context(True)
     cursor = await conn.execute(
-        "SELECT user_id FROM telegram_connections WHERE chat_id = ? AND is_active = 1",
+        "SELECT user_id FROM telegram_connections WHERE chat_id = ? AND is_active = TRUE",
         (str(chat_id),)
     )
     row = await cursor.fetchone()
-    return row["user_id"] if row else None
+    if hasattr(conn, "set_system_context"):
+        await conn.set_system_context(False)
+    return str(row["user_id"]) if row else None
 
 async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
     """
     Parses and handles Telegram conversational commands and queries.
     Friendly, short, informative and direct.
+    Enforces authenticated user RLS context for all student queries and updates.
     """
     clean_text = text.strip()
     user_id = await get_user_by_chat_id(conn, chat_id)
+    if user_id and hasattr(conn, "set_session_user"):
+        await conn.set_session_user(user_id)
     
     # 1. Unauthenticated commands
     if clean_text.startswith("/start"):
@@ -132,12 +139,17 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         code = parts[1].strip().upper()
         code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
         
-        # Verify code using the hash atomically
+        # Verify code using the hash atomically with system context
+        if hasattr(conn, "set_system_context"):
+            await conn.set_system_context(True)
         cursor = await conn.execute(
             "SELECT id, user_id, expires_at, used_at FROM pairing_codes WHERE code_hash = ? AND device_type = 'telegram' AND used_at IS NULL",
             (code_hash,)
         )
         pairing = await cursor.fetchone()
+        if hasattr(conn, "set_system_context"):
+            await conn.set_system_context(False)
+
         if not pairing:
             return "❌ Invalid or unrecognized code. Please generate a new pairing code from your Dashboard Settings."
             
@@ -146,7 +158,9 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         if now_dt > expires_dt:
             return "⚠️ This pairing code has expired. Please generate a new one from your dashboard."
             
-        matched_user_id = pairing["user_id"]
+        matched_user_id = str(pairing["user_id"])
+        if hasattr(conn, "set_session_user"):
+            await conn.set_session_user(matched_user_id)
         now = now_iso()
         
         # Mark code used atomically and bind telegram connection in a single transaction
@@ -161,8 +175,8 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
             # Insert or update telegram connection
             await conn.execute("""
             INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
-            VALUES (?, ?, ?, ?, 1)
-            ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1, connected_at = excluded.connected_at;
+            VALUES (?, ?, ?, ?, TRUE)
+            ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = TRUE, connected_at = excluded.connected_at;
             """, (new_uuid(), matched_user_id, str(chat_id), now))
         
         return "✅ <b>Account successfully linked!</b>\nApplyRecall is now connected to your personal application memory."
@@ -308,6 +322,14 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
             INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
             VALUES (?, ?, ?, 'status_change', ?, ?, 'Status updated via Telegram Assistant', ?);
             """, (new_uuid(), user_id, app_id, old_status, matched_status, now))
+
+            # If transition to terminal status (Rejected, Withdrawn, Offer), cancel pending/in-flight reminders
+            if matched_status in {"Rejected", "Withdrawn", "Offer"}:
+                await conn.execute("""
+                UPDATE reminders
+                SET status = 'cancelled', claim_token = NULL, processing_started_at = NULL, processing_expires_at = NULL, updated_at = ?
+                WHERE application_id = ? AND status IN ('pending', 'snoozed', 'processing')
+                """, (now, app_id))
         
         return (
             f"✅ <b>Updated {app['company']}!</b>\n\n"

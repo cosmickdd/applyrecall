@@ -155,11 +155,17 @@ async def get_current_user_id(
     # Method 1: Device token (Chrome extension / Telegram device)
     if x_device_token:
         token_hash = _hash_token(x_device_token)
+        # Use system context for pre-auth device token lookup
+        if hasattr(conn, "set_system_context"):
+            await conn.set_system_context(True)
         cursor = await conn.execute(
             "SELECT user_id, is_active FROM device_connections WHERE token_hash = ?",
             (token_hash,)
         )
         row = await cursor.fetchone()
+        if hasattr(conn, "set_system_context"):
+            await conn.set_system_context(False)
+
         if not row:
             raise HTTPException(status_code=401, detail="Invalid device token. Please re-pair your device.")
         if not row["is_active"]:
@@ -171,7 +177,10 @@ async def get_current_user_id(
             (now_iso(), token_hash)
         )
         await conn.commit()
-        return row["user_id"]
+        user_id = str(row["user_id"])
+        if hasattr(conn, "set_session_user"):
+            await conn.set_session_user(user_id)
+        return user_id
 
     # Method 2: Authorization header
     if not authorization:
@@ -188,12 +197,18 @@ async def get_current_user_id(
 
     # If the token is in JWT format (3 dot-separated base64 segments) or we are in production, validate JWT
     if token.count(".") == 2 or settings.is_production:
-        return _validate_supabase_jwt(token)
+        user_id = _validate_supabase_jwt(token)
+        if hasattr(conn, "set_session_user"):
+            await conn.set_session_user(user_id)
+        return user_id
 
     # In development mode, check if SUPABASE_JWT_SECRET is explicitly configured
     if settings.SUPABASE_JWT_SECRET:
         try:
-            return _validate_supabase_jwt(token)
+            user_id = _validate_supabase_jwt(token)
+            if hasattr(conn, "set_session_user"):
+                await conn.set_session_user(user_id)
+            return user_id
         except HTTPException:
             pass
 
@@ -210,6 +225,8 @@ async def get_current_user_id(
             )
             row = await cursor.fetchone()
             if row:
+                if hasattr(conn, "set_session_user"):
+                    await conn.set_session_user(token)
                 return token
             raise HTTPException(
                 status_code=401,
@@ -291,6 +308,9 @@ async def verify_pairing_code(
     now_dt = datetime.now(timezone.utc)
     now = now_iso()
 
+    if hasattr(conn, "set_system_context"):
+        await conn.set_system_context(True)
+
     cursor = await conn.execute(
         """
         SELECT id, user_id, expires_at, used_at, device_type
@@ -300,6 +320,9 @@ async def verify_pairing_code(
         (code_hash, req.device_type),
     )
     row = await cursor.fetchone()
+
+    if hasattr(conn, "set_system_context"):
+        await conn.set_system_context(False)
 
     if not row:
         raise HTTPException(status_code=400, detail="Invalid or already used pairing code.")
@@ -311,7 +334,9 @@ async def verify_pairing_code(
             detail="Pairing code has expired. Please generate a new one.",
         )
 
-    matched_user_id = row["user_id"]
+    matched_user_id = str(row["user_id"])
+    if hasattr(conn, "set_session_user"):
+        await conn.set_session_user(matched_user_id)
 
     # Generate secure device token
     device_token = _generate_device_token()
@@ -341,8 +366,8 @@ async def verify_pairing_code(
             await conn.execute(
                 """
                 INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
-                VALUES (?, ?, ?, ?, 1)
-                ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1, connected_at = excluded.connected_at;
+                VALUES (?, ?, ?, ?, TRUE)
+                ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = TRUE, connected_at = excluded.connected_at;
                 """,
                 (new_uuid(), matched_user_id, str(req.chat_id), now),
             )
@@ -407,7 +432,7 @@ async def revoke_device(
 ):
     """Revokes a connected device, invalidating its token."""
     result = await conn.execute(
-        "UPDATE device_connections SET is_active = 0 WHERE id = ? AND user_id = ?",
+        "UPDATE device_connections SET is_active = FALSE WHERE id = ? AND user_id = ?",
         (device_id, user_id),
     )
     await conn.commit()

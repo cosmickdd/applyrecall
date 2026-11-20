@@ -122,6 +122,9 @@ CREATE TABLE IF NOT EXISTS reminders (
     error_message TEXT,
     next_retry_at TIMESTAMPTZ,
     processing_started_at TIMESTAMPTZ,
+    claim_token TEXT,
+    worker_id TEXT,
+    processing_expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -15,6 +15,7 @@ class Settings:
 
     # Database — PostgreSQL (Supabase / Render) and SQLite (dev-only fallback)
     DATABASE_URL: str = os.getenv("DATABASE_URL", "").strip()
+    TEST_DATABASE_URL: str = os.getenv("TEST_DATABASE_URL", "").strip()
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "").strip()
     SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "").strip()  # anon key
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
@@ -39,6 +40,8 @@ class Settings:
 
     # Worker configuration
     WORKER_INTERVAL_SECONDS: int = int(os.getenv("WORKER_INTERVAL_SECONDS", "15"))
+    WORKER_BATCH_SIZE: int = int(os.getenv("WORKER_BATCH_SIZE", "10"))
+    WORKER_LEASE_MINUTES: int = int(os.getenv("WORKER_LEASE_MINUTES", "5"))
     MAX_RETRY_ATTEMPTS: int = 4  # Initial attempt + 3 retries (5m, 20m, 80m)
     RETRY_DELAYS_MINUTES: list[int] = [5, 20, 80]
     STALE_PROCESSING_TIMEOUT_MINUTES: int = 10

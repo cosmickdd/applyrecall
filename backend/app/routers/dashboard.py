@@ -49,14 +49,14 @@ async def get_dashboard_summary(
     
     # Telegram connection check
     cursor_tg = await conn.execute(
-        "SELECT id FROM telegram_connections WHERE user_id = ? AND is_active = 1 LIMIT 1",
+        "SELECT id FROM telegram_connections WHERE user_id = ? AND is_active = TRUE LIMIT 1",
         (user_id,)
     )
     telegram_connected = bool(await cursor_tg.fetchone())
     
     # Extension connection check: check active device_connections or used pairing_codes
     cursor_dev = await conn.execute(
-        "SELECT id FROM device_connections WHERE user_id = ? AND device_type = 'extension' AND is_active = 1 LIMIT 1",
+        "SELECT id FROM device_connections WHERE user_id = ? AND device_type = 'extension' AND is_active = TRUE LIMIT 1",
         (user_id,)
     )
     dev_row = await cursor_dev.fetchone()

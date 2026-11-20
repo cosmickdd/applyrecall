@@ -193,7 +193,8 @@ class TestReminderRetrySchedule:
             CREATE TABLE reminders (
                 id TEXT PRIMARY KEY, user_id TEXT, application_id TEXT, reminder_at TEXT, type TEXT,
                 status TEXT, attempts INT DEFAULT 0, last_attempt_at TEXT, next_retry_at TEXT,
-                processing_started_at TEXT, error_message TEXT, created_at TEXT, updated_at TEXT
+                processing_started_at TEXT, claim_token TEXT, worker_id TEXT, processing_expires_at TEXT,
+                error_message TEXT, created_at TEXT, updated_at TEXT
             );
             """)
             await conn.execute("""

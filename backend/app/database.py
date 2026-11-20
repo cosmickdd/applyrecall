@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -262,6 +263,9 @@ class PostgresConnectionWrapper:
 
     def __init__(self, raw_conn):
         self._conn = raw_conn
+        self._session_user: Optional[str] = None
+        self._is_worker: bool = False
+        self._is_system: bool = False
 
     async def execute(self, query: str, parameters: Optional[Union[tuple, list]] = None) -> QueryResult:
         pg_query = convert_placeholders_to_pg(query.strip())
@@ -292,6 +296,12 @@ class PostgresConnectionWrapper:
     async def transaction(self):
         """Asynchronous context manager for explicit transactions with rollback on failure."""
         async with self._conn.transaction():
+            if self._session_user:
+                await self.set_session_user_local(self._session_user)
+            if self._is_worker:
+                await self.set_worker_context_local(True)
+            if self._is_system:
+                await self.set_system_context_local(True)
             yield self
 
     async def commit(self) -> None:
@@ -303,11 +313,58 @@ class PostgresConnectionWrapper:
         if self._conn.is_in_transaction():
             await self._conn.execute("ROLLBACK;")
 
-    async def set_session_user(self, user_id: str) -> None:
-        """Sets transaction-local user identity for PostgreSQL RLS policies."""
+    async def set_session_user(self, user_id: Optional[str]) -> None:
+        """Sets parameterized session user identity for PostgreSQL RLS policies."""
+        self._session_user = str(user_id) if user_id else None
         if user_id:
             adapted_id = str(adapt_param_for_pg(user_id))
-            await self._conn.execute(f"SET LOCAL app.current_user_id = '{adapted_id}';")
+            await self._conn.execute("SELECT set_config('app.current_user_id', $1, false);", adapted_id)
+        else:
+            await self._conn.execute("SELECT set_config('app.current_user_id', '', false);")
+
+    async def set_session_user_local(self, user_id: Optional[str]) -> None:
+        """Sets transaction-local user identity (reverts upon transaction end)."""
+        if user_id:
+            adapted_id = str(adapt_param_for_pg(user_id))
+            await self._conn.execute("SELECT set_config('app.current_user_id', $1, true);", adapted_id)
+        else:
+            await self._conn.execute("SELECT set_config('app.current_user_id', '', true);")
+
+    async def set_worker_context(self, is_worker: bool = True) -> None:
+        """Sets worker context for reminder background processing."""
+        self._is_worker = is_worker
+        val = "true" if is_worker else ""
+        await self._conn.execute("SELECT set_config('app.is_worker', $1, false);", val)
+
+    async def set_worker_context_local(self, is_worker: bool = True) -> None:
+        """Sets transaction-local worker context."""
+        val = "true" if is_worker else ""
+        await self._conn.execute("SELECT set_config('app.is_worker', $1, true);", val)
+
+    async def set_system_context(self, is_system: bool = True) -> None:
+        """Sets system context for unauthenticated lookups (device token hash / pairing hash lookup)."""
+        self._is_system = is_system
+        val = "true" if is_system else ""
+        await self._conn.execute("SELECT set_config('app.is_system', $1, false);", val)
+
+    async def set_system_context_local(self, is_system: bool = True) -> None:
+        """Sets transaction-local system context."""
+        val = "true" if is_system else ""
+        await self._conn.execute("SELECT set_config('app.is_system', $1, true);", val)
+
+    async def reset_contexts(self) -> None:
+        """Resets all session contexts back to clean state before connection return to pool."""
+        self._session_user = None
+        self._is_worker = False
+        self._is_system = False
+        try:
+            await self._conn.execute("""
+            SELECT set_config('app.current_user_id', '', false);
+            SELECT set_config('app.is_worker', '', false);
+            SELECT set_config('app.is_system', '', false);
+            """)
+        except Exception:
+            pass
 
 
 class SqliteConnectionWrapper:
@@ -318,6 +375,9 @@ class SqliteConnectionWrapper:
 
     def __init__(self, raw_conn):
         self._conn = raw_conn
+        self._session_user: Optional[str] = None
+        self._is_worker: bool = False
+        self._is_system: bool = False
 
     async def execute(self, query: str, parameters: Optional[Union[tuple, list]] = None) -> QueryResult:
         cursor = await self._conn.execute(query, parameters or ())
@@ -348,15 +408,35 @@ class SqliteConnectionWrapper:
     async def rollback(self) -> None:
         await self._conn.rollback()
 
-    async def set_session_user(self, user_id: str) -> None:
-        pass
+    async def set_session_user(self, user_id: Optional[str]) -> None:
+        self._session_user = str(user_id) if user_id else None
+
+    async def set_session_user_local(self, user_id: Optional[str]) -> None:
+        self._session_user = str(user_id) if user_id else None
+
+    async def set_worker_context(self, is_worker: bool = True) -> None:
+        self._is_worker = is_worker
+
+    async def set_worker_context_local(self, is_worker: bool = True) -> None:
+        self._is_worker = is_worker
+
+    async def set_system_context(self, is_system: bool = True) -> None:
+        self._is_system = is_system
+
+    async def set_system_context_local(self, is_system: bool = True) -> None:
+        self._is_system = is_system
+
+    async def reset_contexts(self) -> None:
+        self._session_user = None
+        self._is_worker = False
+        self._is_system = False
 
 
 @asynccontextmanager
 async def db_transaction(conn):
     """
     Universal transaction context manager that works seamlessly across:
-    - PostgresConnectionWrapper (asyncpg transaction)
+    - PostgresConnectionWrapper (asyncpg transaction with transaction-local RLS contexts)
     - SqliteConnectionWrapper (aiosqlite transaction)
     - Raw aiosqlite.Connection (for backward-compatibility in direct tests)
     - Raw asyncpg.Connection
@@ -432,7 +512,11 @@ async def get_db():
     if settings.use_postgres:
         pool = await get_pg_pool()
         async with pool.acquire() as raw_conn:
-            yield PostgresConnectionWrapper(raw_conn)
+            wrapper = PostgresConnectionWrapper(raw_conn)
+            try:
+                yield wrapper
+            finally:
+                await wrapper.reset_contexts()
     else:
         conn = await aiosqlite.connect(settings.SQLITE_PATH)
         conn.row_factory = aiosqlite.Row
@@ -455,7 +539,11 @@ async def get_db_context():
     if settings.use_postgres:
         pool = await get_pg_pool()
         async with pool.acquire() as raw_conn:
-            yield PostgresConnectionWrapper(raw_conn)
+            wrapper = PostgresConnectionWrapper(raw_conn)
+            try:
+                yield wrapper
+            finally:
+                await wrapper.reset_contexts()
     else:
         conn = await aiosqlite.connect(settings.SQLITE_PATH)
         conn.row_factory = aiosqlite.Row
@@ -466,53 +554,94 @@ async def get_db_context():
             await conn.close()
 
 
+MIGRATION_ADVISORY_LOCK_ID = 872194812739812
+
+
 async def apply_migrations(conn):
     """
     Applies versioned SQL migrations from backend/app/migrations/*.sql
     in transactional, idempotent sequence.
+    Guarantees:
+    1. Uses PostgreSQL advisory lock to ensure API and worker startup cannot run migrations concurrently.
+    2. Executes multi-statement SQL scripts natively without semicolon splitting (preserving functions, DO blocks, etc.).
+    3. Runs each migration file inside a transaction with checksum tracking in schema_migrations.
+    4. Detects and rolls back partial failures; never marks a migration applied unless commit succeeds.
     """
-    # Create migration tracking table
-    await conn.execute("""
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-        version TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        applied_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    """)
+    raw_conn = conn._conn if hasattr(conn, "_conn") else conn
+    is_pg = hasattr(raw_conn, "execute") and not hasattr(raw_conn, "row_factory")
 
-    cursor = await conn.execute("SELECT version FROM schema_migrations;")
-    applied_rows = await cursor.fetchall()
-    applied_versions = {r["version"] for r in applied_rows}
+    # 1. Mutual exclusion: acquire PostgreSQL advisory lock
+    if is_pg:
+        logger.info("Acquiring PostgreSQL advisory lock for migrations...")
+        await raw_conn.execute(f"SELECT pg_advisory_lock({MIGRATION_ADVISORY_LOCK_ID});")
 
-    migrations_dir = Path(__file__).resolve().parent / "migrations"
-    if not migrations_dir.exists():
-        logger.warning(f"Migrations directory not found at {migrations_dir}")
-        return
+    try:
+        # 2. Ensure schema_migrations table exists
+        if is_pg:
+            await raw_conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TIMESTAMPTZ DEFAULT NOW(),
+                checksum TEXT
+            );
+            """)
+            rows = await raw_conn.fetch("SELECT version FROM schema_migrations ORDER BY version ASC;")
+            applied_versions = {r["version"] for r in rows}
+        else:
+            await raw_conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TEXT,
+                checksum TEXT
+            );
+            """)
+            cursor = await raw_conn.execute("SELECT version FROM schema_migrations;")
+            applied_rows = await cursor.fetchall()
+            applied_versions = {r["version"] if isinstance(r, dict) or hasattr(r, "__getitem__") else r[0] for r in applied_rows}
 
-    migration_files = sorted(migrations_dir.glob("*.sql"))
-    for mig_file in migration_files:
-        version = mig_file.name.split("_")[0]
-        if version in applied_versions:
-            continue
+        migrations_dir = Path(__file__).resolve().parent / "migrations"
+        if not migrations_dir.exists():
+            logger.warning(f"Migrations directory not found at {migrations_dir}")
+            return
 
-        logger.info(f"Applying database migration: {mig_file.name}...")
-        sql_content = mig_file.read_text(encoding="utf-8")
+        migration_files = sorted(migrations_dir.glob("*.sql"))
+        for mig_file in migration_files:
+            version = mig_file.name.split("_")[0]
+            if version in applied_versions:
+                continue
 
-        async with conn.transaction():
-            # Run migration commands
-            for statement in sql_content.split(";"):
-                stmt = statement.strip()
-                if stmt:
-                    await conn.execute(stmt)
+            logger.info(f"Applying database migration: {mig_file.name}...")
+            sql_content = mig_file.read_text(encoding="utf-8")
+            file_checksum = hashlib.sha256(sql_content.encode("utf-8")).hexdigest()
 
-            # Record in schema_migrations
-            now = now_iso()
-            await conn.execute(
-                "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
-                (version, mig_file.name, now)
-            )
+            if is_pg:
+                # In PostgreSQL, execute the entire script transactionally in one call without splitting
+                async with raw_conn.transaction():
+                    await raw_conn.execute(sql_content)
+                    await raw_conn.execute(
+                        "INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES ($1, $2, NOW(), $3);",
+                        version, mig_file.name, file_checksum
+                    )
+            else:
+                # In SQLite, executescript runs multi-statement scripts
+                await raw_conn.executescript(sql_content)
+                await raw_conn.execute(
+                    "INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES (?, ?, ?, ?);",
+                    (version, mig_file.name, now_iso(), file_checksum)
+                )
+                await raw_conn.commit()
 
-        logger.info(f"Successfully applied migration: {mig_file.name}")
+            logger.info(f"Successfully applied migration: {mig_file.name}")
+    finally:
+        # Release the advisory lock
+        if is_pg:
+            try:
+                await raw_conn.execute(f"SELECT pg_advisory_unlock({MIGRATION_ADVISORY_LOCK_ID});")
+                logger.info("Released PostgreSQL advisory lock for migrations.")
+            except Exception as e:
+                logger.warning(f"Error releasing advisory lock: {e}")
 
 
 async def init_db():
@@ -681,6 +810,9 @@ async def _init_sqlite_schema():
             error_message TEXT,
             next_retry_at TEXT,
             processing_started_at TEXT,
+            claim_token TEXT,
+            worker_id TEXT,
+            processing_expires_at TEXT,
             created_at TEXT,
             updated_at TEXT,
             FOREIGN KEY (user_id) REFERENCES profiles(user_id) ON DELETE CASCADE,
@@ -762,6 +894,12 @@ async def _init_sqlite_schema():
             await conn.execute("ALTER TABLE reminders ADD COLUMN next_retry_at TEXT;")
         if "processing_started_at" not in rem_cols:
             await conn.execute("ALTER TABLE reminders ADD COLUMN processing_started_at TEXT;")
+        if "claim_token" not in rem_cols:
+            await conn.execute("ALTER TABLE reminders ADD COLUMN claim_token TEXT;")
+        if "worker_id" not in rem_cols:
+            await conn.execute("ALTER TABLE reminders ADD COLUMN worker_id TEXT;")
+        if "processing_expires_at" not in rem_cols:
+            await conn.execute("ALTER TABLE reminders ADD COLUMN processing_expires_at TEXT;")
 
         # Migrate telegram_processed_updates if columns missing
         cursor_tg_cols = await conn.execute("PRAGMA table_info(telegram_processed_updates);")

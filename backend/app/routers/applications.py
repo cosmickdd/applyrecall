@@ -177,6 +177,14 @@ async def update_application(
                 new_uuid(), user_id, app_id, old_status, new_status,
                 f"Status changed from {old_status} to {new_status}.", now
             ))
+
+            # Automatically cancel reminders when application reaches terminal status
+            if new_status in {"Rejected", "Withdrawn", "Offer"}:
+                await conn.execute("""
+                UPDATE reminders
+                SET status = 'cancelled', claim_token = NULL, processing_started_at = NULL, processing_expires_at = NULL, updated_at = ?
+                WHERE application_id = ? AND status IN ('pending', 'snoozed', 'processing')
+                """, (now, app_id))
             
         await conn.execute(query, values)
     
