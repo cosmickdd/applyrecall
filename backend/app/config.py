@@ -1,10 +1,26 @@
 import os
 import re
+import urllib.parse
 from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+
+def _sanitize_dsn(dsn: str) -> str:
+    """Normalizes postgres:// scheme and URL-encodes special characters in passwords."""
+    if not dsn:
+        return dsn
+    if dsn.startswith("postgres://"):
+        dsn = "postgresql://" + dsn[len("postgres://"):]
+    # Match postgresql://user:password@host[:port]/database
+    m = re.match(r"^(postgresql://[^:]+:)(.+)@([^@]+)$", dsn)
+    if m:
+        prefix, raw_pw, suffix = m.groups()
+        if "@" in raw_pw:
+            encoded_pw = urllib.parse.quote(raw_pw, safe="")
+            dsn = f"{prefix}{encoded_pw}@{suffix}"
+    return dsn
 
 class Settings:
     PROJECT_NAME: str = "ApplyRecall"
@@ -63,27 +79,18 @@ class Settings:
 
     @property
     def postgres_dsn(self) -> str:
-        """Normalizes postgres:// scheme to postgresql:// for asyncpg."""
-        dsn = self.DATABASE_URL
-        if dsn.startswith("postgres://"):
-            dsn = "postgresql://" + dsn[len("postgres://"):]
-        return dsn
+        """Normalizes postgres:// scheme to postgresql:// for asyncpg and sanitizes credentials."""
+        return _sanitize_dsn(self.DATABASE_URL)
 
     @property
     def migration_postgres_dsn(self) -> str:
         """DSN for schema migrations (applyrecall_migrator / admin)."""
-        dsn = self.MIGRATION_DATABASE_URL or self.DATABASE_URL
-        if dsn.startswith("postgres://"):
-            dsn = "postgresql://" + dsn[len("postgres://"):]
-        return dsn
+        return _sanitize_dsn(self.MIGRATION_DATABASE_URL or self.DATABASE_URL)
 
     @property
     def worker_postgres_dsn(self) -> str:
         """DSN for background reminder worker (applyrecall_worker)."""
-        dsn = self.WORKER_DATABASE_URL or self.DATABASE_URL
-        if dsn.startswith("postgres://"):
-            dsn = "postgresql://" + dsn[len("postgres://"):]
-        return dsn
+        return _sanitize_dsn(self.WORKER_DATABASE_URL or self.DATABASE_URL)
 
     @property
     def cors_origins(self) -> list[str]:

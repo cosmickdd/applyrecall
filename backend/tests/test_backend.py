@@ -55,7 +55,9 @@ def test_jwt_validation_flow():
         await init_db()
         test_secret = "test-jwt-secret-key-387a3947-very-long-and-secure-32bytes"
         original_secret = settings.SUPABASE_JWT_SECRET
+        original_url = settings.SUPABASE_URL
         settings.SUPABASE_JWT_SECRET = test_secret
+        settings.SUPABASE_URL = "https://test.supabase.co"
 
         try:
             now_ts = int(datetime.now(timezone.utc).timestamp())
@@ -101,6 +103,7 @@ def test_jwt_validation_flow():
                 assert r_wrong.status_code == 401
         finally:
             settings.SUPABASE_JWT_SECRET = original_secret
+            settings.SUPABASE_URL = original_url
     asyncio.run(_run())
 
 def test_pairing_code_security_and_single_use():

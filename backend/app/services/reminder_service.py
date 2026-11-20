@@ -93,7 +93,8 @@ async def process_due_reminders(
                 ORDER BY r.reminder_at ASC
                 LIMIT ?
             """
-            if settings.use_postgres:
+            is_pg = getattr(conn, "_is_pg", False)
+            if is_pg:
                 query += " FOR UPDATE OF r SKIP LOCKED"
 
             cursor = await conn.execute(query, (now, MAX_RETRY_ATTEMPTS, now, limit))

@@ -260,6 +260,7 @@ class PostgresConnectionWrapper:
     identical to aiosqlite, with automatic parameter translation (? -> $n),
     type adaptation, and real transaction context managers.
     """
+    _is_pg: bool = True
 
     def __init__(self, raw_conn):
         self._conn = raw_conn
@@ -372,6 +373,7 @@ class SqliteConnectionWrapper:
     Wraps an aiosqlite Connection to expose a cursor-compatible interface
     identical to PostgresConnectionWrapper, with transaction support.
     """
+    _is_pg: bool = False
 
     def __init__(self, raw_conn):
         self._conn = raw_conn
@@ -464,8 +466,10 @@ async def get_pg_pool(dsn: Optional[str] = None):
     if target_dsn not in _pg_pools or _pg_pools[target_dsn] is None:
         import asyncpg
 
-        clean_dsn = re.sub(r"[?&]sslmode=[^&]+", "", target_dsn).rstrip("?&")
-        ssl_mode = "require" if ("sslmode=require" in target_dsn or "supabase.co" in target_dsn or settings.is_production) else None
+        from app.config import _sanitize_dsn
+        sanitized_dsn = _sanitize_dsn(target_dsn)
+        clean_dsn = re.sub(r"[?&]sslmode=[^&]+", "", sanitized_dsn).rstrip("?&")
+        ssl_mode = "require" if ("sslmode=require" in sanitized_dsn or "supabase.co" in sanitized_dsn or "pooler.supabase.com" in sanitized_dsn or settings.is_production) else None
 
         safe_dsn = re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", clean_dsn)
         logger.info(f"Initializing asyncpg pool for {safe_dsn}...")
