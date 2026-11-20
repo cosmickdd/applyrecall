@@ -240,7 +240,7 @@ class DeviceConnectionResponse(BaseModel):
     id: str
     device_type: str
     device_name: Optional[str] = None
-    is_active: int
+    is_active: bool | int
     created_at: Optional[str] = None
     last_used_at: Optional[str] = None
 

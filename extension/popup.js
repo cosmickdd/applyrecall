@@ -309,8 +309,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || "Pairing failed. Check the code.");
+        let msg = "Pairing failed. Check the code.";
+        try {
+          const err = await resp.json();
+          if (err && err.detail) msg = err.detail;
+        } catch (_) {
+          if (resp.status === 502 || resp.status === 503) {
+            msg = "Server is deploying or restarting. Please retry in 10 seconds.";
+          } else if (resp.status === 500) {
+            msg = "Server error occurred. Please try generating a new code.";
+          }
+        }
+        throw new Error(msg);
       }
 
       const data = await resp.json();

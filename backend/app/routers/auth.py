@@ -402,7 +402,7 @@ async def verify_pairing_code(
         await conn.execute(
             """
             INSERT INTO device_connections (id, user_id, device_type, device_name, token_hash, is_active, created_at, last_used_at)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            VALUES (?, ?, ?, ?, ?, TRUE, ?, ?)
             """,
             (new_uuid(), matched_user_id, req.device_type, device_name, device_token_hash, now, now),
         )

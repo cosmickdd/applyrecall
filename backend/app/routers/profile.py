@@ -98,7 +98,7 @@ async def add_experience(
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         exp_id, user_id, req.company, req.position, req.description,
-        req.start_date, req.end_date, 1 if req.is_current else 0, now
+        req.start_date, req.end_date, bool(req.is_current), now
     ))
     await conn.commit()
     
