@@ -482,6 +482,7 @@ async def get_pg_pool(dsn: Optional[str] = None):
                 max_size=10,
                 timeout=10.0,
                 command_timeout=30.0,
+                statement_cache_size=0 if (":6543" in clean_dsn or "pooler.supabase.com" in clean_dsn) else 100,
                 max_inactive_connection_lifetime=300.0,
             )
             _pg_pools[target_dsn] = pool
