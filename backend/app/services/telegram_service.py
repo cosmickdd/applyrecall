@@ -4,28 +4,49 @@ import httpx
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 from app.config import settings
-from app.database import now_iso, new_uuid
+from app.database import now_iso, new_uuid, db_transaction
 from app.services.followup import generate_followup_draft
 
 TELEGRAM_API_BASE = "https://api.telegram.org/bot"
+
+class TelegramSendResult(tuple):
+    """
+    Subclasses 2-tuple (success, detail) so existing code:
+      sent, detail = await send_telegram_message(...)
+    continues to work without any modification, while also exposing:
+      result.retryable
+      result.message_id
+    """
+    def __new__(cls, success: bool, detail: str, retryable: bool = False, message_id: Optional[int] = None):
+        instance = super(TelegramSendResult, cls).__new__(cls, (success, detail))
+        instance.success = success
+        instance.detail = detail
+        instance.retryable = retryable
+        instance.message_id = message_id
+        return instance
+
 
 async def send_telegram_message(
     chat_id: str,
     text: str,
     reply_markup: Optional[Dict[str, Any]] = None,
     parse_mode: Optional[str] = "HTML"
-) -> Tuple[bool, str]:
+) -> TelegramSendResult:
     """
     Sends a message via the official Telegram Bot API.
-    Returns (success: bool, detail: str).
+    Returns TelegramSendResult (subclasses tuple: (success: bool, detail: str)).
     Never simulates success when token is missing.
+    Correctly classifies errors into retryable (429, 5xx, timeout) vs non-retryable (400, 401, 403).
     """
     if not settings.TELEGRAM_BOT_TOKEN:
-        return False, "TELEGRAM_BOT_TOKEN is not configured on the server."
+        return TelegramSendResult(False, "TELEGRAM_BOT_TOKEN is not configured on the server.", retryable=False)
+
+    if not chat_id or not str(chat_id).strip():
+        return TelegramSendResult(False, "Missing recipient chat_id.", retryable=False)
         
     url = f"{TELEGRAM_API_BASE}{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
-        "chat_id": chat_id,
+        "chat_id": str(chat_id),
         "text": text,
         "parse_mode": parse_mode
     }
@@ -36,13 +57,23 @@ async def send_telegram_message(
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
             data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            
             if resp.status_code == 200 and data.get("ok") is True:
-                return True, "Message delivered successfully."
+                msg_id = data.get("result", {}).get("message_id")
+                return TelegramSendResult(True, "Message delivered successfully.", retryable=False, message_id=msg_id)
             
             error_desc = data.get("description", f"Telegram API error {resp.status_code}")
-            return False, error_desc
+            
+            # Rate limited or server errors are retryable
+            if resp.status_code == 429 or resp.status_code in (500, 502, 503, 504):
+                return TelegramSendResult(False, f"Telegram API error {resp.status_code}: {error_desc}", retryable=True)
+                
+            # Client errors (400 bad request, 401 unauthorized, 403 bot blocked) are NOT retryable
+            return TelegramSendResult(False, f"Telegram API error {resp.status_code}: {error_desc}", retryable=False)
+    except (httpx.TimeoutException, httpx.NetworkError, httpx.ConnectError) as e:
+        return TelegramSendResult(False, f"Telegram network error: {str(e)}", retryable=True)
     except Exception as e:
-        return False, f"Telegram network error: {str(e)}"
+        return TelegramSendResult(False, f"Telegram unexpected error: {str(e)}", retryable=False)
 
 async def get_user_by_chat_id(conn, chat_id: str) -> Optional[str]:
     cursor = await conn.execute(
@@ -118,21 +149,21 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         matched_user_id = pairing["user_id"]
         now = now_iso()
         
-        # Mark code used atomically
-        result = await conn.execute(
-            "UPDATE pairing_codes SET used_at = ? WHERE id = ? AND used_at IS NULL",
-            (now, pairing["id"])
-        )
-        if result.rowcount == 0:
-            return "❌ This code has already been used. Please generate a fresh code from your dashboard."
-        
-        # Insert or update telegram connection
-        await conn.execute("""
-        INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
-        VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1, connected_at = excluded.connected_at;
-        """, (new_uuid(), matched_user_id, str(chat_id), now))
-        await conn.commit()
+        # Mark code used atomically and bind telegram connection in a single transaction
+        async with db_transaction(conn):
+            result = await conn.execute(
+                "UPDATE pairing_codes SET used_at = ? WHERE id = ? AND used_at IS NULL",
+                (now, pairing["id"])
+            )
+            if result.rowcount == 0:
+                return "❌ This code has already been used. Please generate a fresh code from your dashboard."
+            
+            # Insert or update telegram connection
+            await conn.execute("""
+            INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1, connected_at = excluded.connected_at;
+            """, (new_uuid(), matched_user_id, str(chat_id), now))
         
         return "✅ <b>Account successfully linked!</b>\nApplyRecall is now connected to your personal application memory."
 
@@ -267,16 +298,16 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         old_status = app["status"]
         app_id = app["id"]
         
-        # Update the application
+        # Update the application and log event in a single atomic transaction
         now = now_iso()
-        await conn.execute("UPDATE applications SET status = ?, updated_at = ? WHERE id = ?", (matched_status, now, app_id))
-        
-        # Log event in application_events
-        await conn.execute("""
-        INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
-        VALUES (?, ?, ?, 'status_change', ?, ?, 'Status updated via Telegram Assistant', ?);
-        """, (new_uuid(), user_id, app_id, old_status, matched_status, now))
-        await conn.commit()
+        async with db_transaction(conn):
+            await conn.execute("UPDATE applications SET status = ?, updated_at = ? WHERE id = ?", (matched_status, now, app_id))
+            
+            # Log event in application_events
+            await conn.execute("""
+            INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
+            VALUES (?, ?, ?, 'status_change', ?, ?, 'Status updated via Telegram Assistant', ?);
+            """, (new_uuid(), user_id, app_id, old_status, matched_status, now))
         
         return (
             f"✅ <b>Updated {app['company']}!</b>\n\n"

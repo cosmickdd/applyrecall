@@ -9,7 +9,7 @@ from typing import Optional
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from app.config import settings
-from app.database import get_db, now_iso, new_uuid
+from app.database import get_db, now_iso, new_uuid, db_transaction
 from app.models.schemas import (
     GeneratePairingCodeRequest,
     GeneratePairingCodeResponse,
@@ -313,39 +313,39 @@ async def verify_pairing_code(
 
     matched_user_id = row["user_id"]
 
-    # Mark code as used atomically
-    result = await conn.execute(
-        "UPDATE pairing_codes SET used_at = ? WHERE id = ? AND used_at IS NULL",
-        (now, row["id"]),
-    )
-    if result.rowcount == 0:
-        raise HTTPException(status_code=400, detail="Pairing code was already used.")
-
     # Generate secure device token
     device_token = _generate_device_token()
     device_token_hash = _hash_token(device_token)
     device_name = req.device_name or f"{req.device_type}-{now_dt.strftime('%Y%m%d')}"
 
-    await conn.execute(
-        """
-        INSERT INTO device_connections (id, user_id, device_type, device_name, token_hash, is_active, created_at, last_used_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-        """,
-        (new_uuid(), matched_user_id, req.device_type, device_name, device_token_hash, now, now),
-    )
+    # Atomic multi-step operation: consume code + register device (+ link telegram if applicable)
+    async with db_transaction(conn):
+        # Mark code as used atomically
+        result = await conn.execute(
+            "UPDATE pairing_codes SET used_at = ? WHERE id = ? AND used_at IS NULL",
+            (now, row["id"]),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=400, detail="Pairing code was already used.")
 
-    # If device is telegram and chat_id is supplied, link the chat
-    if req.device_type == "telegram" and req.chat_id:
         await conn.execute(
             """
-            INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
-            VALUES (?, ?, ?, ?, 1)
-            ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1, connected_at = excluded.connected_at;
+            INSERT INTO device_connections (id, user_id, device_type, device_name, token_hash, is_active, created_at, last_used_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
             """,
-            (new_uuid(), matched_user_id, str(req.chat_id), now),
+            (new_uuid(), matched_user_id, req.device_type, device_name, device_token_hash, now, now),
         )
 
-    await conn.commit()
+        # If device is telegram and chat_id is supplied, link the chat
+        if req.device_type == "telegram" and req.chat_id:
+            await conn.execute(
+                """
+                INSERT INTO telegram_connections (id, user_id, chat_id, connected_at, is_active)
+                VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT(chat_id) DO UPDATE SET user_id = excluded.user_id, is_active = 1, connected_at = excluded.connected_at;
+                """,
+                (new_uuid(), matched_user_id, str(req.chat_id), now),
+            )
 
     # Fetch profile summary
     cursor_p = await conn.execute(

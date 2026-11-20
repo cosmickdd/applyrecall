@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional, Dict, Any
-from app.database import get_db, now_iso, new_uuid
+from app.database import get_db, now_iso, new_uuid, db_transaction
 from app.routers.auth import get_current_user_id
 from app.models.schemas import (
     ApplicationCreate,
@@ -72,26 +72,25 @@ async def create_application(
     now = now_iso()
     applied_time = req.applied_at or (now if req.status == "Applied" else None)
     
-    await conn.execute("""
-    INSERT INTO applications (
-        id, user_id, company, position, job_url, source, description,
-        location, employment_type, status, applied_at, hr_email, notes,
-        created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        app_id, user_id, req.company.strip(), req.position.strip(),
-        req.job_url, req.source, req.description, req.location,
-        req.employment_type, req.status or "Saved", applied_time,
-        req.hr_email, req.notes, now, now
-    ))
-    
-    # Log creation event
-    await conn.execute("""
-    INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
-    VALUES (?, ?, ?, 'created', NULL, ?, 'Application record created.', ?)
-    """, (new_uuid(), user_id, app_id, req.status or "Saved", now))
-    
-    await conn.commit()
+    async with db_transaction(conn):
+        await conn.execute("""
+        INSERT INTO applications (
+            id, user_id, company, position, job_url, source, description,
+            location, employment_type, status, applied_at, hr_email, notes,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            app_id, user_id, req.company.strip(), req.position.strip(),
+            req.job_url, req.source, req.description, req.location,
+            req.employment_type, req.status or "Saved", applied_time,
+            req.hr_email, req.notes, now, now
+        ))
+        
+        # Log creation event
+        await conn.execute("""
+        INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
+        VALUES (?, ?, ?, 'created', NULL, ?, 'Application record created.', ?)
+        """, (new_uuid(), user_id, app_id, req.status or "Saved", now))
     
     cursor = await conn.execute("SELECT * FROM applications WHERE id = ?", (app_id,))
     row = await cursor.fetchone()
@@ -158,27 +157,28 @@ async def update_application(
     old_status = existing["status"]
     new_status = update_data.get("status")
     
-    if new_status and new_status != old_status:
-        # If moving to Applied and applied_at is empty, set it
-        if new_status == "Applied" and not existing["applied_at"] and "applied_at" not in update_data:
-            update_data["applied_at"] = now
-            
-        await conn.execute("""
-        INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
-        VALUES (?, ?, ?, 'status_change', ?, ?, ?, ?)
-        """, (
-            new_uuid(), user_id, app_id, old_status, new_status,
-            f"Status changed from {old_status} to {new_status}.", now
-        ))
-        
     update_data["updated_at"] = now
     fields = [f"{k} = ?" for k in update_data.keys()]
     values = list(update_data.values())
     values.extend([app_id, user_id])
     
     query = f"UPDATE applications SET {', '.join(fields)} WHERE id = ? AND user_id = ?"
-    await conn.execute(query, values)
-    await conn.commit()
+
+    async with db_transaction(conn):
+        if new_status and new_status != old_status:
+            # If moving to Applied and applied_at is empty, set it
+            if new_status == "Applied" and not existing["applied_at"] and "applied_at" not in update_data:
+                update_data["applied_at"] = now
+                
+            await conn.execute("""
+            INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
+            VALUES (?, ?, ?, 'status_change', ?, ?, ?, ?)
+            """, (
+                new_uuid(), user_id, app_id, old_status, new_status,
+                f"Status changed from {old_status} to {new_status}.", now
+            ))
+            
+        await conn.execute(query, values)
     
     cursor = await conn.execute("SELECT * FROM applications WHERE id = ?", (app_id,))
     updated_row = await cursor.fetchone()
@@ -216,39 +216,38 @@ async def confirm_application_applied(
     applied_time = req.applied_at or now
     old_status = app_row["status"]
     
-    await conn.execute("""
-    UPDATE applications 
-    SET status = 'Applied', applied_at = ?, updated_at = ?
-    WHERE id = ? AND user_id = ?
-    """, (applied_time, now, app_id, user_id))
-    
-    # Event
-    await conn.execute("""
-    INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
-    VALUES (?, ?, ?, 'status_change', ?, 'Applied', 'Application submission confirmed by student.', ?)
-    """, (new_uuid(), user_id, app_id, old_status, now))
-    
-    # Record answers linked to this application
-    if req.used_answers:
-        for ans in req.used_answers:
-            ans_id = new_uuid()
-            await conn.execute("""
-            INSERT INTO application_answers (id, user_id, application_id, question, answer, source_answer_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (ans_id, user_id, app_id, ans.question.strip(), ans.answer.strip(), ans.source_answer_id, now))
-            if ans.source_answer_id:
-                await conn.execute("UPDATE answers SET last_used_at = ? WHERE id = ? AND user_id = ?", (now, ans.source_answer_id, user_id))
-
-    # Create follow-up reminder (default 7 days) if requested
-    if req.create_reminder:
-        reminder_time = (datetime.now(timezone.utc) + timedelta(days=req.reminder_days)).isoformat()
+    async with db_transaction(conn):
         await conn.execute("""
-        INSERT INTO reminders (id, user_id, application_id, reminder_at, type, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'follow_up', 'pending', ?, ?)
-        """, (new_uuid(), user_id, app_id, reminder_time, now, now))
+        UPDATE applications 
+        SET status = 'Applied', applied_at = ?, updated_at = ?
+        WHERE id = ? AND user_id = ?
+        """, (applied_time, now, app_id, user_id))
         
-    await conn.commit()
-    
+        # Event
+        await conn.execute("""
+        INSERT INTO application_events (id, user_id, application_id, event_type, previous_value, new_value, description, created_at)
+        VALUES (?, ?, ?, 'status_change', ?, 'Applied', 'Application submission confirmed by student.', ?)
+        """, (new_uuid(), user_id, app_id, old_status, now))
+        
+        # Record answers linked to this application
+        if req.used_answers:
+            for ans in req.used_answers:
+                ans_id = new_uuid()
+                await conn.execute("""
+                INSERT INTO application_answers (id, user_id, application_id, question, answer, source_answer_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (ans_id, user_id, app_id, ans.question.strip(), ans.answer.strip(), ans.source_answer_id, now))
+                if ans.source_answer_id:
+                    await conn.execute("UPDATE answers SET last_used_at = ? WHERE id = ? AND user_id = ?", (now, ans.source_answer_id, user_id))
+
+        # Create follow-up reminder (default 7 days) if requested
+        if req.create_reminder:
+            reminder_time = (datetime.now(timezone.utc) + timedelta(days=req.reminder_days)).isoformat()
+            await conn.execute("""
+            INSERT INTO reminders (id, user_id, application_id, reminder_at, type, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'follow_up', 'pending', ?, ?)
+            """, (new_uuid(), user_id, app_id, reminder_time, now, now))
+        
     cursor = await conn.execute("SELECT * FROM applications WHERE id = ?", (app_id,))
     updated_row = await cursor.fetchone()
     return ApplicationResponse(**dict(updated_row))
@@ -271,15 +270,15 @@ async def add_application_answer(
     a = req.get("answer", "").strip()
     source_id = req.get("source_answer_id")
     
-    await conn.execute("""
-    INSERT INTO application_answers (id, user_id, application_id, question, answer, source_answer_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (ans_id, user_id, app_id, q, a, source_id, now))
-    
-    if source_id:
-        await conn.execute("UPDATE answers SET last_used_at = ? WHERE id = ? AND user_id = ?", (now, source_id, user_id))
+    async with db_transaction(conn):
+        await conn.execute("""
+        INSERT INTO application_answers (id, user_id, application_id, question, answer, source_answer_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (ans_id, user_id, app_id, q, a, source_id, now))
         
-    await conn.commit()
+        if source_id:
+            await conn.execute("UPDATE answers SET last_used_at = ? WHERE id = ? AND user_id = ?", (now, source_id, user_id))
+        
     return {"id": ans_id, "application_id": app_id, "question": q, "answer": a, "source_answer_id": source_id, "created_at": now}
 
 @router.post("/{app_id}/events", response_model=ApplicationEventResponse)

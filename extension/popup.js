@@ -1,7 +1,13 @@
 // ApplyRecall Extension Popup Logic
 // Connects to backend with secure device token, tab-scoped context, answers matching, and safe autofill.
 
-let API_BASE = "http://localhost:8000/api";
+const PROD_API_BASE = "https://applyrecall-api.onrender.com/api";
+const PROD_DASHBOARD_BASE = "https://applyrecall.vercel.app";
+const DEV_API_BASE = "http://localhost:8000/api";
+const DEV_DASHBOARD_BASE = "http://localhost:3000";
+
+let API_BASE = PROD_API_BASE;
+let DASHBOARD_BASE = PROD_DASHBOARD_BASE;
 
 document.addEventListener("DOMContentLoaded", async () => {
   const stateNotConnected = document.getElementById("state-not-connected");
@@ -11,27 +17,81 @@ document.addEventListener("DOMContentLoaded", async () => {
   const userInfoFooter = document.getElementById("user-info-footer");
   const toastEl = document.getElementById("status-toast");
   const apiUrlInput = document.getElementById("api-url-input");
+  const dashboardUrlInput = document.getElementById("dashboard-url-input");
   const saveApiUrlBtn = document.getElementById("save-api-url-btn");
+  const resetProdUrlBtn = document.getElementById("reset-prod-url-btn");
+  const resetDevUrlBtn = document.getElementById("reset-dev-url-btn");
+  const openDashLink = document.getElementById("open-dashboard-link");
+  const openAnswersLink = document.getElementById("open-answers-link");
 
-  // Load configured API URL if saved
-  chrome.storage.sync.get(["api_base_url"], (cfg) => {
+  function updateFooterLinks() {
+    if (openDashLink) openDashLink.href = DASHBOARD_BASE;
+    if (openAnswersLink) openAnswersLink.href = `${DASHBOARD_BASE.replace(/\/+$/, "")}/answers`;
+  }
+
+  // Load configured API URL and Dashboard URL if saved
+  chrome.storage.sync.get(["api_base_url", "dashboard_base_url"], (cfg) => {
     if (cfg && cfg.api_base_url) {
       API_BASE = cfg.api_base_url;
+    }
+    if (cfg && cfg.dashboard_base_url) {
+      DASHBOARD_BASE = cfg.dashboard_base_url;
     }
     if (apiUrlInput) {
       apiUrlInput.value = API_BASE;
     }
+    if (dashboardUrlInput) {
+      dashboardUrlInput.value = DASHBOARD_BASE;
+    }
+    updateFooterLinks();
   });
 
-  if (saveApiUrlBtn && apiUrlInput) {
+  if (saveApiUrlBtn) {
     saveApiUrlBtn.addEventListener("click", () => {
-      const url = apiUrlInput.value.trim().replace(/\/+$/, "");
-      if (url) {
-        API_BASE = url;
-        chrome.storage.sync.set({ api_base_url: url }, () => {
-          showToast("API Server URL saved.");
-        });
+      const apiVal = apiUrlInput ? apiUrlInput.value.trim().replace(/\/+$/, "") : "";
+      const dashVal = dashboardUrlInput ? dashboardUrlInput.value.trim().replace(/\/+$/, "") : "";
+      
+      if (apiVal) {
+        // Enforce HTTPS unless localhost/127.0.0.1
+        if (!apiVal.startsWith("https://") && !apiVal.startsWith("http://localhost") && !apiVal.startsWith("http://127.0.0.1")) {
+          showToast("Production API URL must use HTTPS.", "error");
+          return;
+        }
+        API_BASE = apiVal;
       }
+      if (dashVal) {
+        DASHBOARD_BASE = dashVal;
+      }
+      chrome.storage.sync.set({ api_base_url: API_BASE, dashboard_base_url: DASHBOARD_BASE }, () => {
+        updateFooterLinks();
+        showToast("Server configuration saved.");
+      });
+    });
+  }
+
+  if (resetProdUrlBtn) {
+    resetProdUrlBtn.addEventListener("click", () => {
+      API_BASE = PROD_API_BASE;
+      DASHBOARD_BASE = PROD_DASHBOARD_BASE;
+      if (apiUrlInput) apiUrlInput.value = API_BASE;
+      if (dashboardUrlInput) dashboardUrlInput.value = DASHBOARD_BASE;
+      chrome.storage.sync.set({ api_base_url: API_BASE, dashboard_base_url: DASHBOARD_BASE }, () => {
+        updateFooterLinks();
+        showToast("Switched to Production environment.");
+      });
+    });
+  }
+
+  if (resetDevUrlBtn) {
+    resetDevUrlBtn.addEventListener("click", () => {
+      API_BASE = DEV_API_BASE;
+      DASHBOARD_BASE = DEV_DASHBOARD_BASE;
+      if (apiUrlInput) apiUrlInput.value = API_BASE;
+      if (dashboardUrlInput) dashboardUrlInput.value = DASHBOARD_BASE;
+      chrome.storage.sync.set({ api_base_url: API_BASE, dashboard_base_url: DASHBOARD_BASE }, () => {
+        updateFooterLinks();
+        showToast("Switched to Local Development.");
+      });
     });
   }
 

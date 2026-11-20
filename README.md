@@ -159,15 +159,30 @@ Dashboard opens at `http://localhost:3000`.
 4. Configure environment variables:
    - `BACKEND_PROXY_URL`: URL of your deployed FastAPI service.
 
-### Telegram Assistant (BotFather)
+### Telegram Assistant (BotFather) & Webhook CLI
 1. Message `@BotFather` on Telegram and create a new bot via `/newbot`.
-2. Set `TELEGRAM_BOT_TOKEN` in backend environment variables.
-3. Configure the webhook:
+2. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` in backend environment variables.
+3. Use the built-in management CLI to configure, verify, or remove webhooks:
    ```bash
-   curl -F "url=https://your-api.com/api/telegram/webhook" \
-        -F "secret_token=YOUR_TELEGRAM_WEBHOOK_SECRET" \
-        https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
+   # Register webhook and verify live registration
+   python -m app.cli register-webhook --url https://your-api.onrender.com/api/telegram/webhook
+
+   # Inspect webhook health and pending updates
+   python -m app.cli get-webhook-info
+
+   # Remove webhook if returning to polling mode
+   python -m app.cli remove-webhook
    ```
+
+### Database Management & Migrations CLI
+Apply migrations and test database connectivity:
+```bash
+# Verify database connection, table row counts, and applied migrations
+python -m app.cli db-check
+
+# Run all pending migrations against current database
+python -m app.cli migrate
+```
 
 ---
 
@@ -182,19 +197,24 @@ $env:PYTHONPATH="."
 .\venv\Scripts\pytest.exe -v
 ```
 
-Current test suite: **13 tests passing (100%)**, covering:
-- Database initialization and starter seeding
+Current test suite: **33 tests passing (100%)**, covering:
+- Database initialization, schema migration, and starter seeding
+- PostgreSQL parameter adaptation (UUIDs, ISO timestamps with timezones, JSON dict/list)
+- Robust SQL placeholder conversion scanner (`?` to `$1`, `$2` preserving quotes and comments)
 - Unauthorized request rejection (missing token, malformed token, unknown user)
-- Supabase JWT cryptographic validation, expiration, and issuer verification
+- Supabase JWT cryptographic validation (`HS256`, audience `authenticated`, project issuer verification)
 - Atomic pairing code generation, SHA-256 hashing, single-use, and expiration
 - Opaque device token authentication and device revocation
 - Semantic, keyword, and strict scoping answer matching
 - Follow-up email draft generation with Gmail and Mailto deep links
 - Conversational Telegram Assistant queries and status updates
 - Telegram webhook secret verification and `update_id` deduplication
-- Reminder delivery lifecycle, terminal status cancellation, and exponential backoff retry
+- Reminder atomic claiming (`FOR UPDATE SKIP LOCKED` / SQLite concurrency check)
+- 4-attempt exponential backoff retry schedule (`[5m, 20m, 80m]`) and terminal failure handling
+- Stale processing claim recovery for crashed workers (>10 minutes)
+- Truthful Telegram delivery error classification (retryable 429/5xx vs permanent 400/401/403)
 - Strict user data privacy and tenant isolation
-- Full 14-step cross-surface workflow simulation
+- Full cross-surface end-to-end workflow simulation
 
 ---
 

@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from app.config import settings
-from app.database import now_iso, new_uuid
+from app.database import now_iso, new_uuid, db_transaction
 from app.services.telegram_service import send_telegram_message
 
 logger = logging.getLogger("applyrecall.reminders")
@@ -22,55 +22,99 @@ async def recover_stale_processing_reminders(conn) -> int:
     ).isoformat()
     now = now_iso()
     
-    cursor = await conn.execute(
-        """
-        UPDATE reminders
-        SET status = 'pending', processing_started_at = NULL, updated_at = ?
-        WHERE status = 'processing' AND (processing_started_at IS NULL OR processing_started_at <= ?)
-        """,
-        (now, cutoff)
-    )
-    recovered = cursor.rowcount if hasattr(cursor, "rowcount") else 0
-    if recovered > 0:
-        logger.warning(f"Recovered {recovered} stale processing reminder(s) back to pending.")
-        await conn.commit()
-    return recovered
+    async with db_transaction(conn):
+        cursor = await conn.execute(
+            """
+            UPDATE reminders
+            SET status = 'pending', processing_started_at = NULL, updated_at = ?
+            WHERE status = 'processing' AND (processing_started_at IS NULL OR processing_started_at <= ?)
+            """,
+            (now, cutoff)
+        )
+        recovered = cursor.rowcount if hasattr(cursor, "rowcount") else 0
+        if recovered > 0:
+            logger.warning(f"Recovered {recovered} stale processing reminder(s) back to pending.")
+        return recovered
 
 async def process_due_reminders(conn) -> List[Dict[str, Any]]:
     """
     Processes due reminders across the shared database (PostgreSQL or SQLite).
     Adheres strictly to production reliability rules:
     1. Stale-claim recovery for crashed workers.
-    2. Atomic claiming (with SKIP LOCKED where supported).
+    2. Atomic claiming (FOR UPDATE SKIP LOCKED on PostgreSQL, atomic conditional check on SQLite).
     3. Terminal status cancellation check immediately before sending.
-    4. Only marks 'sent' if Telegram confirms actual successful delivery.
-    5. Exponential retry schedule: 5m -> 20m -> 80m.
+    4. HTTP Telegram delivery executed outside of database transactions.
+    5. Only marks 'sent' if Telegram confirms actual successful delivery.
+    6. Exponential retry schedule: 5m -> 20m -> 80m (4 total attempts).
     """
     now = now_iso()
     
     # 1. Recover any stale claims from crashed workers
     await recover_stale_processing_reminders(conn)
     
-    # 2. Select eligible reminders
-    # Due pending/snoozed, or failed reminders whose next_retry_at has arrived
-    cursor = await conn.execute("""
-        SELECT r.id, r.user_id, r.application_id, r.reminder_at, r.type, r.status,
-               r.attempts, r.error_message,
-               a.company, a.position, a.status as app_status, a.applied_at,
-               tc.chat_id
-        FROM reminders r
-        JOIN applications a ON r.application_id = a.id
-        LEFT JOIN telegram_connections tc ON r.user_id = tc.user_id AND tc.is_active = 1
-        WHERE (
-            (r.status IN ('pending', 'snoozed') AND r.reminder_at <= ?)
-            OR (r.status = 'failed' AND r.attempts < ? AND (r.next_retry_at IS NULL OR r.next_retry_at <= ?))
-        )
-    """, (now, MAX_RETRY_ATTEMPTS, now))
-    
-    due_items = await cursor.fetchall()
+    claimed_items = []
     results = []
     
-    for item in due_items:
+    # Phase 1: Atomic Claim inside Transaction 1
+    async with db_transaction(conn):
+        query = """
+            SELECT r.id, r.user_id, r.application_id, r.reminder_at, r.type, r.status,
+                   r.attempts, r.error_message,
+                   a.company, a.position, a.status as app_status, a.applied_at,
+                   tc.chat_id
+            FROM reminders r
+            JOIN applications a ON r.application_id = a.id
+            LEFT JOIN telegram_connections tc ON r.user_id = tc.user_id AND tc.is_active = 1
+            WHERE (
+                (r.status IN ('pending', 'snoozed') AND r.reminder_at <= ?)
+                OR (r.status = 'failed' AND r.attempts < ? AND (r.next_retry_at IS NULL OR r.next_retry_at <= ?))
+            )
+            ORDER BY r.reminder_at ASC
+        """
+        if settings.use_postgres:
+            query += " FOR UPDATE OF r SKIP LOCKED"
+            
+        cursor = await conn.execute(query, (now, MAX_RETRY_ATTEMPTS, now))
+        due_items = await cursor.fetchall()
+        
+        for item in due_items:
+            r_id = str(item["id"])
+            app_status = item["app_status"]
+            company = item["company"]
+            
+            # Check terminal status: cancel reminders for Rejected, Withdrawn, or Offer
+            if app_status in TERMINAL_STATUSES:
+                await conn.execute(
+                    "UPDATE reminders SET status = 'cancelled', updated_at = ? WHERE id = ?",
+                    (now, r_id)
+                )
+                results.append({
+                    "reminder_id": r_id,
+                    "action": "cancelled_terminal_status",
+                    "app_status": app_status,
+                    "company": company
+                })
+                continue
+
+            # Atomic Claim: Transition status to 'processing'
+            claim_time = now_iso()
+            cursor_claim = await conn.execute(
+                """
+                UPDATE reminders 
+                SET status = 'processing', processing_started_at = ?, updated_at = ?
+                WHERE id = ? AND status IN ('pending', 'snoozed', 'failed')
+                """,
+                (claim_time, claim_time, r_id)
+            )
+            # For SQLite, verify that we actually claimed the row (concurrency protection)
+            if hasattr(cursor_claim, "rowcount") and cursor_claim.rowcount == 0:
+                continue
+                
+            claimed_items.append(item)
+    # Tx 1 commits here. All claimed_items are now locked in 'processing' status in DB.
+
+    # Phase 2: Delivery & Outcome recording (separate transactions, no DB lock held during HTTP)
+    for item in claimed_items:
         r_id = str(item["id"])
         app_status = item["app_status"]
         company = item["company"]
@@ -79,35 +123,6 @@ async def process_due_reminders(conn) -> List[Dict[str, Any]]:
         applied_at = item["applied_at"]
         attempts = int(item["attempts"] or 0)
         
-        # 3. Terminal State Rule: Immediately cancel reminders for Rejected, Withdrawn, or Offer
-        if app_status in TERMINAL_STATUSES:
-            await conn.execute(
-                "UPDATE reminders SET status = 'cancelled', updated_at = ? WHERE id = ?",
-                (now, r_id)
-            )
-            results.append({
-                "reminder_id": r_id,
-                "action": "cancelled_terminal_status",
-                "app_status": app_status,
-                "company": company
-            })
-            continue
-
-        # 4. Atomic Claim: Transition status to 'processing' and record processing_started_at
-        claim_time = now_iso()
-        await conn.execute(
-            """
-            UPDATE reminders 
-            SET status = 'processing', processing_started_at = ?, updated_at = ?
-            WHERE id = ? AND status IN ('pending', 'snoozed', 'failed')
-            """,
-            (claim_time, claim_time, r_id)
-        )
-
-        # 5. Check if another concurrent worker claimed it
-        # (Verification for SQLite; in Postgres SKIP LOCKED already protects selection)
-        
-        # 6. Compose notification message
         days_str = ""
         if applied_at:
             try:
@@ -131,75 +146,78 @@ async def process_due_reminders(conn) -> List[Dict[str, Any]]:
         sent = False
         error_msg = None
         new_attempts = attempts + 1
+        is_retryable = True
 
         if not chat_id:
-            # Telegram not connected for this student
             error_msg = "Student has not linked a Telegram account. Link Telegram via Settings to receive reminders."
             sent = False
+            is_retryable = False
         else:
-            # Attempt actual delivery via Telegram API
-            sent, detail = await send_telegram_message(chat_id, msg)
+            # Deliver via external Telegram API outside DB transaction
+            res = await send_telegram_message(chat_id, msg)
+            sent = res[0]
             if not sent:
-                error_msg = detail
+                error_msg = res[1]
+                is_retryable = getattr(res, "retryable", True)
 
         update_time = now_iso()
         
-        # 7. Delivery evaluation
-        if sent:
-            # CONFIRMED DELIVERY: Mark 'sent' (or completed for schema compatibility)
-            await conn.execute("""
-                UPDATE reminders 
-                SET status = 'sent', sent_at = ?, attempts = ?, last_attempt_at = ?, 
-                    processing_started_at = NULL, error_message = NULL, updated_at = ? 
-                WHERE id = ?
-            """, (update_time, new_attempts, update_time, update_time, r_id))
-            
-            results.append({
-                "reminder_id": r_id,
-                "action": "sent",
-                "company": company,
-                "telegram_sent": True
-            })
-        else:
-            # DELIVERY FAILED / NOT CONNECTED: Must NEVER mark as sent!
-            if new_attempts >= MAX_RETRY_ATTEMPTS:
-                # Terminal failure after all retries exhausted
+        # Tx 2: Record outcome atomically
+        async with db_transaction(conn):
+            if sent:
+                # CONFIRMED DELIVERY: Mark 'sent'
                 await conn.execute("""
                     UPDATE reminders 
-                    SET status = 'failed', attempts = ?, last_attempt_at = ?, 
-                        processing_started_at = NULL, error_message = ?, updated_at = ? 
+                    SET status = 'sent', sent_at = ?, attempts = ?, last_attempt_at = ?, 
+                        processing_started_at = NULL, error_message = NULL, updated_at = ? 
                     WHERE id = ?
-                """, (new_attempts, update_time, f"Max retries ({MAX_RETRY_ATTEMPTS}) reached. {error_msg}", update_time, r_id))
+                """, (update_time, new_attempts, update_time, update_time, r_id))
                 
                 results.append({
                     "reminder_id": r_id,
-                    "action": "failed_max_retries",
+                    "action": "sent",
                     "company": company,
-                    "error": error_msg
+                    "telegram_sent": True
                 })
             else:
-                # Schedule retry using exact exponential backoff schedule: 5m, 20m, 80m
-                delay_index = min(new_attempts - 1, len(RETRY_DELAYS_MINUTES) - 1)
-                retry_delay = RETRY_DELAYS_MINUTES[delay_index]
-                next_retry = (datetime.now(timezone.utc) + timedelta(minutes=retry_delay)).isoformat()
-                
-                await conn.execute("""
-                    UPDATE reminders 
-                    SET status = 'failed', attempts = ?, last_attempt_at = ?, 
-                        processing_started_at = NULL, error_message = ?, next_retry_at = ?, updated_at = ? 
-                    WHERE id = ?
-                """, (new_attempts, update_time, error_msg, next_retry, update_time, r_id))
-                
-                results.append({
-                    "reminder_id": r_id,
-                    "action": "failed_will_retry",
-                    "company": company,
-                    "attempt": new_attempts,
-                    "next_retry": next_retry,
-                    "error": error_msg
-                })
-        
-    await conn.commit()
+                # DELIVERY FAILED: Must NEVER mark as sent!
+                if not is_retryable or new_attempts >= MAX_RETRY_ATTEMPTS:
+                    err_text = f"Max retries ({MAX_RETRY_ATTEMPTS}) reached. {error_msg}" if new_attempts >= MAX_RETRY_ATTEMPTS else f"Non-retryable: {error_msg}"
+                    await conn.execute("""
+                        UPDATE reminders 
+                        SET status = 'failed', attempts = ?, last_attempt_at = ?, 
+                            processing_started_at = NULL, error_message = ?, next_retry_at = NULL, updated_at = ? 
+                        WHERE id = ?
+                    """, (new_attempts, update_time, err_text, update_time, r_id))
+                    
+                    results.append({
+                        "reminder_id": r_id,
+                        "action": "failed_max_retries",
+                        "company": company,
+                        "error": error_msg
+                    })
+                else:
+                    # Retry delays: [5, 20, 80] minutes
+                    delay_index = min(new_attempts - 1, len(RETRY_DELAYS_MINUTES) - 1)
+                    retry_delay = RETRY_DELAYS_MINUTES[delay_index]
+                    next_retry = (datetime.now(timezone.utc) + timedelta(minutes=retry_delay)).isoformat()
+                    
+                    await conn.execute("""
+                        UPDATE reminders 
+                        SET status = 'failed', attempts = ?, last_attempt_at = ?, 
+                            processing_started_at = NULL, error_message = ?, next_retry_at = ?, updated_at = ? 
+                        WHERE id = ?
+                    """, (new_attempts, update_time, error_msg, next_retry, update_time, r_id))
+                    
+                    results.append({
+                        "reminder_id": r_id,
+                        "action": "failed_will_retry",
+                        "company": company,
+                        "attempt": new_attempts,
+                        "next_retry": next_retry,
+                        "error": error_msg
+                    })
+                    
     return results
 
 async def snooze_reminder(conn, reminder_id: str, days: int = 1) -> bool:

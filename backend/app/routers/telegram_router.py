@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, Request, HTTPException, Header
 from typing import Dict, Any, Optional
 from app.config import settings
-from app.database import get_db, now_iso
+from app.database import get_db, now_iso, db_transaction
 from app.services.telegram_service import handle_telegram_text, send_telegram_message
 
 logger = logging.getLogger("applyrecall.telegram_router")
@@ -47,23 +47,23 @@ async def telegram_webhook(
             elif st == "processing":
                 return {"status": "in_progress", "update_id": update_id}
 
-        # Mark update as processing
+        # Mark update as processing atomically
         now = now_iso()
-        await conn.execute(
-            "INSERT INTO telegram_processed_updates (update_id, status, created_at) VALUES (?, 'processing', ?)"
-            " ON CONFLICT(update_id) DO UPDATE SET status = 'processing';",
-            (update_id, now),
-        )
-        await conn.commit()
+        async with db_transaction(conn):
+            await conn.execute(
+                "INSERT INTO telegram_processed_updates (update_id, status, created_at) VALUES (?, 'processing', ?)"
+                " ON CONFLICT(update_id) DO UPDATE SET status = 'processing';",
+                (update_id, now),
+            )
 
     message = data.get("message") or data.get("edited_message")
     if not message:
         if update_id is not None:
-            await conn.execute(
-                "UPDATE telegram_processed_updates SET status = 'processed', processed_at = ? WHERE update_id = ?",
-                (now_iso(), update_id),
-            )
-            await conn.commit()
+            async with db_transaction(conn):
+                await conn.execute(
+                    "UPDATE telegram_processed_updates SET status = 'processed', processed_at = ? WHERE update_id = ?",
+                    (now_iso(), update_id),
+                )
         return {"status": "ignored"}
 
     chat = message.get("chat", {})
@@ -77,19 +77,19 @@ async def telegram_webhook(
 
             # Mark update permanently processed upon successful completion
             if update_id is not None:
-                await conn.execute(
-                    "UPDATE telegram_processed_updates SET status = 'processed', processed_at = ? WHERE update_id = ?",
-                    (now_iso(), update_id),
-                )
-                await conn.commit()
+                async with db_transaction(conn):
+                    await conn.execute(
+                        "UPDATE telegram_processed_updates SET status = 'processed', processed_at = ? WHERE update_id = ?",
+                        (now_iso(), update_id),
+                    )
         except Exception as e:
             logger.error(f"Error processing Telegram update {update_id}: {e}", exc_info=True)
             if update_id is not None:
-                await conn.execute(
-                    "UPDATE telegram_processed_updates SET status = 'failed' WHERE update_id = ?",
-                    (update_id,),
-                )
-                await conn.commit()
+                async with db_transaction(conn):
+                    await conn.execute(
+                        "UPDATE telegram_processed_updates SET status = 'failed' WHERE update_id = ?",
+                        (update_id,),
+                    )
             raise HTTPException(status_code=500, detail="Failed to process Telegram update.")
 
     return {"status": "ok"}

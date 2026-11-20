@@ -165,17 +165,24 @@
     <!-- Footer -->
     <footer class="app-footer">
       <div class="footer-links">
-        <a href="http://localhost:3000" target="_blank" class="footer-link">Open Dashboard</a>
+        <a id="open-dashboard-link" href="https://applyrecall.vercel.app" target="_blank" class="footer-link">Open Dashboard</a>
         <span class="footer-dot">•</span>
-        <a href="http://localhost:3000/answers" target="_blank" class="footer-link">Answer Library</a>
+        <a id="open-answers-link" href="https://applyrecall.vercel.app/answers" target="_blank" class="footer-link">Answer Library</a>
       </div>
       <div id="user-info-footer" class="user-info text-xs text-muted">ApplyRecall MVP</div>
       <div class="server-config-section mt-2 text-xs">
         <details>
-          <summary class="cursor-pointer text-muted font-medium hover:text-primary">⚙️ API Server Settings</summary>
+          <summary class="cursor-pointer text-muted font-medium hover:text-primary">⚙️ Environment & Server Settings</summary>
           <div class="mt-2 space-y-1">
-            <input type="text" id="api-url-input" class="text-input text-xs" placeholder="http://localhost:8000/api" />
-            <button id="save-api-url-btn" class="btn btn-ghost btn-full" style="padding: 4px; font-size: 11px;">Save API URL</button>
+            <label class="text-xs text-muted">API Server URL:</label>
+            <input type="text" id="api-url-input" class="text-input text-xs" placeholder="https://applyrecall-api.onrender.com/api" />
+            <label class="text-xs text-muted mt-1">Dashboard URL:</label>
+            <input type="text" id="dashboard-url-input" class="text-input text-xs" placeholder="https://applyrecall.vercel.app" />
+            <div class="button-row mt-2" style="display: flex; gap: 4px;">
+              <button id="save-api-url-btn" class="btn btn-secondary flex-1" style="padding: 4px; font-size: 11px;">Save</button>
+              <button id="reset-prod-url-btn" class="btn btn-ghost" style="padding: 4px; font-size: 11px;">Production</button>
+              <button id="reset-dev-url-btn" class="btn btn-ghost" style="padding: 4px; font-size: 11px;">Local Dev</button>
+            </div>
           </div>
         </details>
       </div>

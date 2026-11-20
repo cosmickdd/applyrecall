@@ -39,7 +39,8 @@ class Settings:
 
     # Worker configuration
     WORKER_INTERVAL_SECONDS: int = int(os.getenv("WORKER_INTERVAL_SECONDS", "15"))
-    MAX_RETRY_ATTEMPTS: int = 3
+    MAX_RETRY_ATTEMPTS: int = 4  # Initial attempt + 3 retries (5m, 20m, 80m)
+    RETRY_DELAYS_MINUTES: list[int] = [5, 20, 80]
     STALE_PROCESSING_TIMEOUT_MINUTES: int = 10
 
     # CORS — derived from env or defaults for dev
@@ -86,6 +87,10 @@ class Settings:
                 raise RuntimeError(
                     "CRITICAL CONFIGURATION ERROR: APP_ENV is set to 'production', but DATABASE_URL is not configured. "
                     "ApplyRecall requires Supabase PostgreSQL in production. SQLite fallback is strictly forbidden in production."
+                )
+            if not self.SUPABASE_URL:
+                raise RuntimeError(
+                    "CRITICAL CONFIGURATION ERROR: Production requires SUPABASE_URL for authenticating users and enforcing token issuer verification."
                 )
             if not self.SUPABASE_JWT_SECRET and not self.SUPABASE_URL:
                 raise RuntimeError(

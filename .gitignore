@@ -36,3 +36,4 @@ backend/applyrecall.db
 # OS
 .DS_Store
 Thumbs.db
+*.zip
