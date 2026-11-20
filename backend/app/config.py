@@ -28,6 +28,7 @@ class Settings:
 
     # Environment mode: "development" or "production"
     APP_ENV: str = os.getenv("APP_ENV", "development").lower()
+    AUTO_MIGRATE: bool = os.getenv("AUTO_MIGRATE", "true").lower() in ("true", "1", "yes")
 
     # Database — PostgreSQL (Supabase / Render) and SQLite (dev-only fallback)
     DATABASE_URL: str = os.getenv("DATABASE_URL", "").strip()

@@ -786,7 +786,7 @@ async def init_db(auto_migrate: Optional[bool] = None):
         settings.validate_production()
 
     should_migrate = auto_migrate if auto_migrate is not None else (
-        not settings.is_production or bool(settings.MIGRATION_DATABASE_URL)
+        settings.AUTO_MIGRATE or not settings.is_production or bool(settings.MIGRATION_DATABASE_URL)
     )
 
     if settings.use_postgres:
