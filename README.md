@@ -66,19 +66,23 @@ A rigorous technical audit identified and resolved all production blockers acros
    - Pairing codes expire in 5 minutes and are single-use enforced atomically.
    - Connected devices can be viewed and revoked via `/api/auth/devices`.
 
-2. **Production PostgreSQL Architecture & Row Level Security (RLS)**:
-   - **Dedicated Non-Superuser Runtime Role**: The application connects in production using `applyrecall_app` (or Supabase authenticated role), which has NO `SUPERUSER` and NO `BYPASSRLS` privileges.
+2. **Production PostgreSQL Architecture & Non-Spoofable Row Level Security (RLS)**:
+   - **Three Distinct Database Roles**:
+     * `applyrecall_migrator`: Owns schema DDL; used exclusively by `python -m app.cli migrate` and deployment release phases (`preDeployCommand`). Runs under `pg_advisory_lock` with SHA-256 migration checksum verification.
+     * `applyrecall_app`: Web runtime role (FastAPI & Telegram webhook). Non-superuser, non-bypassrls, subject to `FORCE ROW LEVEL SECURITY`. Uses transaction-local student identity (`app.current_user_id`).
+     * `applyrecall_worker`: Background worker role. Least-privilege role with column-level `SELECT` on `applications` (`id`, `company`, `position`, `status`, `applied_at`), outcome `UPDATE` on `reminders`, and `SELECT` on `telegram_connections`. Explicitly revoked from `profiles`, `answers`, `experiences`, `projects`, and pairing credentials.
+   - **Elimination of Spoofable GUC Flags**: Removed all reliance on custom configuration flags (`app.is_worker`, `app.is_system`). Privilege boundaries are strictly enforced at the PostgreSQL engine level via column/table grants and role-targeted policies (`TO applyrecall_app, authenticated` vs `TO applyrecall_worker`).
    - **`FORCE ROW LEVEL SECURITY`**: Enabled across all 11 user-facing tables, ensuring even table owners are subjected to RLS policies.
    - **Transaction-Local Identity Propagation**: Student identity is set transaction-locally via `SELECT set_config('app.current_user_id', $1, true)`. In `get_db()` and `get_db_context()`, `reset_contexts()` is called in the `finally` block to strictly guarantee zero identity leakage across asyncpg pooled connections.
-   - **Restricted Background Worker Role**: When the reminder worker claims or processes reminders, it sets `app.is_worker = 'true'`. Under RLS policies, this grants access only to `reminders` and read-only access to `applications` (for composing notification messages), with **ZERO access** to student `profiles` or `answers`.
-   - **PostgreSQL Advisory Lock Migrations**: Migration execution uses native PostgreSQL multi-statement execution (eliminating faulty semicolon splitting) wrapped in `pg_advisory_lock(872194812739812)`. Concurrent API and worker startups cannot collide or execute duplicate migrations. Applied migrations are tracked with SHA-256 checksums in `schema_migrations`.
+   - **Migration Checksum Integrity & Immutability**: All migrations (`000` through `004`) are tracked in `schema_migrations` with SHA-256 checksums. Modifying an applied migration file halts startup with an integrity violation error. Runtime services execute `check_schema_compatibility()` on startup without executing independent DDL.
 
 3. **Background Reminder Worker & Concurrency Control**:
    - **Bounded Batch Processing**: Configurable `WORKER_BATCH_SIZE` (default: 10) prevents worker starvation and excessive memory consumption.
    - **Atomic Leases**: Claims acquire reminders with `FOR UPDATE OF r SKIP LOCKED`, assigning a unique `claim_token` and `processing_expires_at` lease window (`WORKER_LEASE_MINUTES`, default: 5 minutes).
    - **Active Lease Protection**: Stale recovery (`recover_stale_processing_reminders`) recovers ONLY expired leases or abandoned records without touching active leases belonging to healthy workers.
    - **Outcome Lease Guard**: All delivery outcome recordings match `WHERE id = ? AND claim_token = ?`, ensuring expired or reassigned leases cannot overwrite newer state.
-   - **Immediate Pre-Delivery Race Protection**: Before dispatching to Telegram, the worker performs an immediate pre-delivery reload of the application status. If the student transitioned the application to a terminal status (`Offer`, `Rejected`, `Withdrawn`), the reminder is automatically cancelled and message dispatch is skipped.
+   - **Immediate Pre-Delivery Race Protection**: Before dispatching to Telegram, the worker performs an immediate pre-delivery reload of the application status inside a transaction. If the student transitioned the application to a terminal status (`Offer`, `Rejected`, `Withdrawn`), the reminder is automatically cancelled and Telegram dispatch is skipped.
+   - **Structured Production Logging**: Structured events (`[WORKER_CLAIM]`, `[REMINDER_DELIVERY_SUCCESS]`, `[REMINDER_DELIVERY_RETRY]`, `[REMINDER_DELIVERY_FAILED]`, `[REMINDER_CANCELLED]`) output non-sensitive telemetry without logging student PII, tokens, or email addresses.
    - **Retry Schedule**: Exponential backoff (5m, 20m, 80m; 4 total attempts) with truthful classification of retryable (HTTP 429, 5xx) vs non-retryable errors.
 
 4. **Chrome Extension Improvements**:
@@ -185,13 +189,16 @@ Dashboard opens at `http://localhost:3000`.
    ```
 
 ### Database Management & Migrations CLI
-Apply migrations and test database connectivity:
+Apply migrations, provision database roles, and test database connectivity:
 ```bash
-# Verify database connection, table row counts, and applied migrations
-python -m app.cli db-check
+# Provision the three production roles (applyrecall_migrator, applyrecall_app, applyrecall_worker)
+python -m app.cli provision-roles
 
-# Run all pending migrations against current database
+# Run all pending migrations with SHA-256 integrity verification
 python -m app.cli migrate
+
+# Verify database connection, table row counts, and schema compatibility
+python -m app.cli db-check
 ```
 
 ---
@@ -204,17 +211,20 @@ Run all unit, integration, security, and end-to-end tests:
 cd backend
 # Set pythonpath and run pytest
 $env:PYTHONPATH="."
+$env:TEST_DATABASE_URL="postgresql://postgres@127.0.0.1:5432/postgres"
 .\venv\Scripts\pytest.exe -v
 ```
 
-Current test suite: **39 tests passing (100%)**, covering:
-- Native multi-statement PostgreSQL migration execution, `pg_advisory_lock` mutual exclusion, and idempotent checksum tracking
+Current test suite: **46 tests passing (100%)**, covering:
+- Native multi-statement PostgreSQL migration execution, `pg_advisory_lock` mutual exclusion, and SHA-256 migration checksum verification
+- Checksum tamper detection: modifying an applied migration file raises a critical integrity error and halts startup
 - Genuine PostgreSQL type adaptation (native UUIDs, TIMESTAMPTZ with timezones, JSON dict/list, booleans, scalars, and nulls)
 - Explicit transaction rollback and commit boundaries (`db_transaction`) across multi-step mutations
 - PostgreSQL Row Level Security (RLS) two-user isolation under non-superuser runtime role (`applyrecall_app`)
-- Restricted worker permission model: zero student profile/answer visibility, read-only application metadata access, blocked mutations
+- Non-spoofable worker permissions: `applyrecall_worker` is denied reading `profiles` or `answers`, denied updates/deletes to `applications`, and denied deleting `reminders` even if spoofing GUC flags
+- True worker concurrency: two independent worker connections claiming from the same pending queue without duplicate deliveries
+- Controlled mid-flight race protection: pre-delivery reload detects when application transitions to terminal status (`Offer`, `Rejected`, `Withdrawn`) and cancels reminder without calling Telegram
 - Worker batch claiming (`WORKER_BATCH_SIZE`), unique `claim_token` assignments, and active vs expired lease isolation
-- Immediate pre-delivery reload race protection: cancels reminders when application transitions to terminal status (`Offer`, `Rejected`, `Withdrawn`)
 - Database initialization, schema migration, and starter seeding
 - Robust SQL placeholder conversion scanner (`?` to `$1`, `$2` preserving quotes and comments)
 - Unauthorized request rejection (missing token, malformed token, unknown user)

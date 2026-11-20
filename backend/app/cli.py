@@ -19,6 +19,7 @@ import json
 import asyncio
 import argparse
 import httpx
+from pathlib import Path
 from typing import Optional
 
 from app.config import settings
@@ -176,10 +177,10 @@ async def check_database():
 
 
 async def run_migrations():
-    """Initializes schema and runs any pending migrations."""
-    print("Initializing database schema and migrations...")
+    """Initializes schema and runs any pending migrations with integrity verification."""
+    print("Executing database schema migrations...")
     try:
-        await init_db()
+        await init_db(auto_migrate=True)
         print("SUCCESS: Database schema and migrations applied successfully.")
     except Exception as e:
         print(f"FAILED: Migration error: {e}", file=sys.stderr)
@@ -187,6 +188,32 @@ async def run_migrations():
     finally:
         if settings.use_postgres:
             await close_pg_pool()
+
+
+async def provision_roles():
+    """Provisions applyrecall_migrator, applyrecall_app, and applyrecall_worker roles."""
+    print("Provisioning ApplyRecall database roles...")
+    if not settings.use_postgres:
+        print("Role provisioning is only applicable to PostgreSQL databases. Skipping for SQLite.")
+        return
+
+    from app.database import get_migration_db_context
+    try:
+        async with get_migration_db_context() as conn:
+            raw_conn = conn._conn if hasattr(conn, "_conn") else conn
+            mig_path = Path(__file__).resolve().parent / "migrations" / "004_non_spoofable_rls_and_role_grants.sql"
+            if mig_path.exists():
+                sql = mig_path.read_text(encoding="utf-8")
+                await raw_conn.execute(sql)
+                print("SUCCESS: Database roles provisioned with least-privilege grants.")
+            else:
+                print(f"ERROR: Migration file not found at {mig_path}", file=sys.stderr)
+                sys.exit(1)
+    except Exception as e:
+        print(f"FAILED: Role provisioning error: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        await close_pg_pool()
 
 
 def main():
@@ -212,6 +239,9 @@ def main():
     # migrate
     subparsers.add_parser("migrate", help="Execute schema migrations against current database")
 
+    # provision-roles
+    subparsers.add_parser("provision-roles", help="Provision database roles (applyrecall_migrator, applyrecall_app, applyrecall_worker)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -228,6 +258,8 @@ def main():
         asyncio.run(check_database())
     elif args.command == "migrate":
         asyncio.run(run_migrations())
+    elif args.command == "provision-roles":
+        asyncio.run(provision_roles())
 
 
 if __name__ == "__main__":

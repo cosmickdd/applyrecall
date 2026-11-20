@@ -15,6 +15,8 @@ class Settings:
 
     # Database — PostgreSQL (Supabase / Render) and SQLite (dev-only fallback)
     DATABASE_URL: str = os.getenv("DATABASE_URL", "").strip()
+    MIGRATION_DATABASE_URL: str = os.getenv("MIGRATION_DATABASE_URL", "").strip()
+    WORKER_DATABASE_URL: str = os.getenv("WORKER_DATABASE_URL", "").strip()
     TEST_DATABASE_URL: str = os.getenv("TEST_DATABASE_URL", "").strip()
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "").strip()
     SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "").strip()  # anon key
@@ -62,6 +64,22 @@ class Settings:
     def postgres_dsn(self) -> str:
         """Normalizes postgres:// scheme to postgresql:// for asyncpg."""
         dsn = self.DATABASE_URL
+        if dsn.startswith("postgres://"):
+            dsn = "postgresql://" + dsn[len("postgres://"):]
+        return dsn
+
+    @property
+    def migration_postgres_dsn(self) -> str:
+        """DSN for schema migrations (applyrecall_migrator / admin)."""
+        dsn = self.MIGRATION_DATABASE_URL or self.DATABASE_URL
+        if dsn.startswith("postgres://"):
+            dsn = "postgresql://" + dsn[len("postgres://"):]
+        return dsn
+
+    @property
+    def worker_postgres_dsn(self) -> str:
+        """DSN for background reminder worker (applyrecall_worker)."""
+        dsn = self.WORKER_DATABASE_URL or self.DATABASE_URL
         if dsn.startswith("postgres://"):
             dsn = "postgresql://" + dsn[len("postgres://"):]
         return dsn

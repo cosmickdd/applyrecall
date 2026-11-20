@@ -8,6 +8,7 @@ dashboard/out/
 *.egg-info/
 dist/
 build/
+*.tsbuildinfo
 
 # Caches & Logs
 __pycache__/

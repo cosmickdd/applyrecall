@@ -76,15 +76,11 @@ async def send_telegram_message(
         return TelegramSendResult(False, f"Telegram unexpected error: {str(e)}", retryable=False)
 
 async def get_user_by_chat_id(conn, chat_id: str) -> Optional[str]:
-    if hasattr(conn, "set_system_context"):
-        await conn.set_system_context(True)
     cursor = await conn.execute(
         "SELECT user_id FROM telegram_connections WHERE chat_id = ? AND is_active = TRUE",
         (str(chat_id),)
     )
     row = await cursor.fetchone()
-    if hasattr(conn, "set_system_context"):
-        await conn.set_system_context(False)
     return str(row["user_id"]) if row else None
 
 async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
@@ -139,16 +135,12 @@ async def handle_telegram_text(conn, chat_id: str, text: str) -> str:
         code = parts[1].strip().upper()
         code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
         
-        # Verify code using the hash atomically with system context
-        if hasattr(conn, "set_system_context"):
-            await conn.set_system_context(True)
+        # Verify code using the hash atomically
         cursor = await conn.execute(
             "SELECT id, user_id, expires_at, used_at FROM pairing_codes WHERE code_hash = ? AND device_type = 'telegram' AND used_at IS NULL",
             (code_hash,)
         )
         pairing = await cursor.fetchone()
-        if hasattr(conn, "set_system_context"):
-            await conn.set_system_context(False)
 
         if not pairing:
             return "❌ Invalid or unrecognized code. Please generate a new pairing code from your Dashboard Settings."

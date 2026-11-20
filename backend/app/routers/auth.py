@@ -155,16 +155,11 @@ async def get_current_user_id(
     # Method 1: Device token (Chrome extension / Telegram device)
     if x_device_token:
         token_hash = _hash_token(x_device_token)
-        # Use system context for pre-auth device token lookup
-        if hasattr(conn, "set_system_context"):
-            await conn.set_system_context(True)
         cursor = await conn.execute(
             "SELECT user_id, is_active FROM device_connections WHERE token_hash = ?",
             (token_hash,)
         )
         row = await cursor.fetchone()
-        if hasattr(conn, "set_system_context"):
-            await conn.set_system_context(False)
 
         if not row:
             raise HTTPException(status_code=401, detail="Invalid device token. Please re-pair your device.")
@@ -308,9 +303,6 @@ async def verify_pairing_code(
     now_dt = datetime.now(timezone.utc)
     now = now_iso()
 
-    if hasattr(conn, "set_system_context"):
-        await conn.set_system_context(True)
-
     cursor = await conn.execute(
         """
         SELECT id, user_id, expires_at, used_at, device_type
@@ -320,9 +312,6 @@ async def verify_pairing_code(
         (code_hash, req.device_type),
     )
     row = await cursor.fetchone()
-
-    if hasattr(conn, "set_system_context"):
-        await conn.set_system_context(False)
 
     if not row:
         raise HTTPException(status_code=400, detail="Invalid or already used pairing code.")

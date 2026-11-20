@@ -45,7 +45,11 @@ async def recover_stale_processing_reminders(conn) -> int:
         return recovered
 
 
-async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[Dict[str, Any]]:
+async def process_due_reminders(
+    conn,
+    batch_size: Optional[int] = None,
+    pre_delivery_hook: Optional[Any] = None
+) -> List[Dict[str, Any]]:
     """
     Processes due reminders across the shared database (PostgreSQL or SQLite).
     Adheres strictly to production reliability and concurrency rules:
@@ -97,6 +101,7 @@ async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[
 
             for item in due_items:
                 r_id = str(item["id"])
+                attempts = int(item["attempts"] or 0)
                 app_status = item["app_status"]
                 company = item["company"]
 
@@ -112,10 +117,15 @@ async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[
                         "app_status": app_status,
                         "company": company
                     })
+                    logger.info(
+                        f"[REMINDER_CANCELLED] worker_id={worker_id} reminder_id={r_id} "
+                        f"terminal_status={app_status} reason=application_status_changed"
+                    )
                     continue
 
                 # Generate unique claim token and lease expiration
                 claim_token = f"claim_{new_uuid()}"
+                safe_tok = claim_token[:12] + "..." if len(claim_token) > 12 else claim_token
                 claim_time = now_iso()
                 expires_at = (datetime.now(timezone.utc) + lease_duration).isoformat()
 
@@ -133,12 +143,22 @@ async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[
                     continue
 
                 claimed_items.append((item, claim_token))
+                safe_tok = claim_token[:12] + "..." if len(claim_token) > 12 else claim_token
+                logger.info(
+                    f"[WORKER_CLAIM] worker_id={worker_id} reminder_id={r_id} "
+                    f"claim_token={safe_tok} claim_time={claim_time} lease_expires_at={expires_at} attempt={attempts}"
+                )
         # Tx 1 commits here. All claimed_items are now locked in 'processing' status with unique claim_tokens.
 
         # Phase 2: Pre-Delivery Reload, Delivery & Outcome recording
         for item, claim_token in claimed_items:
             r_id = str(item["id"])
             attempts = int(item["attempts"] or 0)
+            safe_tok = claim_token[:12] + "..." if len(claim_token) > 12 else claim_token
+
+            # Controlled mid-flight testing hook (executed after claim, prior to delivery reload)
+            if pre_delivery_hook is not None:
+                await pre_delivery_hook(r_id, claim_token)
 
             # Step 2A: Reload reminder state and verify lease & terminal application status immediately before delivery
             fresh_item = None
@@ -187,6 +207,10 @@ async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[
                         "app_status": app_status,
                         "company": company
                     })
+                    logger.info(
+                        f"[REMINDER_CANCELLED] worker_id={worker_id} reminder_id={r_id} "
+                        f"claim_token={safe_tok} terminal_status={app_status} reason=application_status_changed"
+                    )
                     continue
 
             # Step 2B: Build message from fresh record
@@ -252,6 +276,10 @@ async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[
                         "company": company,
                         "telegram_sent": True
                     })
+                    logger.info(
+                        f"[REMINDER_DELIVERY_SUCCESS] worker_id={worker_id} reminder_id={r_id} "
+                        f"claim_token={safe_tok} attempt={new_attempts} result=sent"
+                    )
                 else:
                     if not is_retryable or new_attempts >= MAX_RETRY_ATTEMPTS:
                         err_text = f"Max retries ({MAX_RETRY_ATTEMPTS}) reached. {error_msg}" if new_attempts >= MAX_RETRY_ATTEMPTS else f"Non-retryable: {error_msg}"
@@ -269,6 +297,10 @@ async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[
                             "company": company,
                             "error": error_msg
                         })
+                        logger.error(
+                            f"[REMINDER_DELIVERY_FAILED] worker_id={worker_id} reminder_id={r_id} "
+                            f"claim_token={safe_tok} attempt={new_attempts} max_retries_reached=true error={error_msg}"
+                        )
                     else:
                         delay_index = min(new_attempts - 1, len(RETRY_DELAYS_MINUTES) - 1)
                         retry_delay = RETRY_DELAYS_MINUTES[delay_index]
@@ -290,6 +322,10 @@ async def process_due_reminders(conn, batch_size: Optional[int] = None) -> List[
                             "next_retry": next_retry,
                             "error": error_msg
                         })
+                        logger.warning(
+                            f"[REMINDER_DELIVERY_RETRY] worker_id={worker_id} reminder_id={r_id} "
+                            f"claim_token={safe_tok} attempt={new_attempts} next_retry_at={next_retry} error={error_msg}"
+                        )
 
         return results
     finally:

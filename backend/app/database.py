@@ -14,8 +14,8 @@ from app.config import settings
 
 logger = logging.getLogger("applyrecall.database")
 
-# Global asyncpg connection pool for PostgreSQL
-_pg_pool = None
+# Global asyncpg connection pools keyed by DSN (app, worker, migrator)
+_pg_pools: Dict[str, Any] = {}
 
 UUID_REGEX = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 ISO_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$")
@@ -454,24 +454,24 @@ async def db_transaction(conn):
             raise
 
 
-async def get_pg_pool():
-    """Initializes and returns the global asyncpg connection pool."""
-    global _pg_pool
-    if _pg_pool is None:
+async def get_pg_pool(dsn: Optional[str] = None):
+    """Initializes and returns an asyncpg connection pool for the given DSN or default DATABASE_URL."""
+    global _pg_pools
+    target_dsn = dsn or settings.postgres_dsn
+    if not target_dsn:
+        raise RuntimeError("PostgreSQL DSN is not configured.")
+
+    if target_dsn not in _pg_pools or _pg_pools[target_dsn] is None:
         import asyncpg
 
-        logger.info("Initializing asyncpg connection pool for Supabase PostgreSQL...")
-        dsn = settings.postgres_dsn
+        clean_dsn = re.sub(r"[?&]sslmode=[^&]+", "", target_dsn).rstrip("?&")
+        ssl_mode = "require" if ("sslmode=require" in target_dsn or "supabase.co" in target_dsn or settings.is_production) else None
 
-        ssl_mode = None
-        if "sslmode=require" in dsn or "supabase.co" in dsn or settings.is_production:
-            ssl_mode = "require"
-
-        # Sanitize query string params for asyncpg
-        clean_dsn = re.sub(r"[?&]sslmode=[^&]+", "", dsn).rstrip("?&")
+        safe_dsn = re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", clean_dsn)
+        logger.info(f"Initializing asyncpg pool for {safe_dsn}...")
 
         try:
-            _pg_pool = await asyncpg.create_pool(
+            pool = await asyncpg.create_pool(
                 dsn=clean_dsn,
                 ssl=ssl_mode,
                 min_size=2,
@@ -480,31 +480,47 @@ async def get_pg_pool():
                 command_timeout=30.0,
                 max_inactive_connection_lifetime=300.0,
             )
+            _pg_pools[target_dsn] = pool
             logger.info("asyncpg connection pool initialized successfully.")
         except Exception as e:
-            # Mask credentials from error message
-            safe_dsn = re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", clean_dsn)
             logger.error(f"Failed to connect to PostgreSQL at {safe_dsn}: {str(e)}")
             raise RuntimeError(f"Database connection failed. Unable to establish connection to PostgreSQL.") from e
 
-    return _pg_pool
+    return _pg_pools[target_dsn]
+
+
+async def get_migration_pg_pool():
+    """Returns asyncpg pool using MIGRATION_DATABASE_URL (applyrecall_migrator / admin)."""
+    return await get_pg_pool(settings.migration_postgres_dsn)
+
+
+async def get_worker_pg_pool():
+    """Returns asyncpg pool using WORKER_DATABASE_URL (applyrecall_worker)."""
+    return await get_pg_pool(settings.worker_postgres_dsn)
+
+
+async def close_all_pg_pools():
+    """Closes all active asyncpg connection pools gracefully."""
+    global _pg_pools
+    for dsn, pool in list(_pg_pools.items()):
+        if pool is not None:
+            try:
+                await pool.close()
+            except Exception:
+                pass
+    _pg_pools.clear()
 
 
 async def close_pg_pool():
-    """Closes the asyncpg connection pool gracefully."""
-    global _pg_pool
-    if _pg_pool is not None:
-        logger.info("Closing asyncpg connection pool...")
-        await _pg_pool.close()
-        _pg_pool = None
-        logger.info("asyncpg connection pool closed.")
+    """Backward compatibility alias for close_all_pg_pools()."""
+    await close_all_pg_pools()
 
 
 async def get_db():
     """
     FastAPI dependency yielding a database connection.
-    Uses PostgreSQL (asyncpg pool) when configured, or SQLite in local development.
-    Never falls back silently to SQLite in production.
+    Uses PostgreSQL (asyncpg pool) with student-facing role (applyrecall_app),
+    or SQLite in local development. Never falls back silently to SQLite in production.
     """
     if settings.is_production and not settings.use_postgres:
         settings.validate_production()
@@ -530,14 +546,68 @@ async def get_db():
 @asynccontextmanager
 async def get_db_context():
     """
-    Context manager for background workers, Telegram bot, and scripts
-    to acquire a database connection outside of HTTP request lifecycles.
+    Context manager for API operations, Telegram bot, and scripts
+    to acquire an application database connection outside of HTTP request lifecycles.
     """
     if settings.is_production and not settings.use_postgres:
         settings.validate_production()
 
     if settings.use_postgres:
         pool = await get_pg_pool()
+        async with pool.acquire() as raw_conn:
+            wrapper = PostgresConnectionWrapper(raw_conn)
+            try:
+                yield wrapper
+            finally:
+                await wrapper.reset_contexts()
+    else:
+        conn = await aiosqlite.connect(settings.SQLITE_PATH)
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("PRAGMA foreign_keys = ON;")
+        try:
+            yield SqliteConnectionWrapper(conn)
+        finally:
+            await conn.close()
+
+
+@asynccontextmanager
+async def get_worker_db_context():
+    """
+    Context manager for background reminder worker using WORKER_DATABASE_URL
+    (role applyrecall_worker with strictly restricted least-privilege permissions).
+    """
+    if settings.is_production and not settings.use_postgres:
+        settings.validate_production()
+
+    if settings.use_postgres:
+        pool = await get_worker_pg_pool()
+        async with pool.acquire() as raw_conn:
+            wrapper = PostgresConnectionWrapper(raw_conn)
+            try:
+                yield wrapper
+            finally:
+                await wrapper.reset_contexts()
+    else:
+        conn = await aiosqlite.connect(settings.SQLITE_PATH)
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("PRAGMA foreign_keys = ON;")
+        try:
+            yield SqliteConnectionWrapper(conn)
+        finally:
+            await conn.close()
+
+
+@asynccontextmanager
+async def get_migration_db_context():
+    """
+    Context manager for migrations CLI using MIGRATION_DATABASE_URL
+    (role applyrecall_migrator / admin with DDL privileges).
+    """
+    if settings.is_production and not settings.use_postgres:
+        settings.validate_production()
+
+    if settings.use_postgres:
+        pool = await get_migration_pg_pool()
         async with pool.acquire() as raw_conn:
             wrapper = PostgresConnectionWrapper(raw_conn)
             try:
@@ -564,8 +634,9 @@ async def apply_migrations(conn):
     Guarantees:
     1. Uses PostgreSQL advisory lock to ensure API and worker startup cannot run migrations concurrently.
     2. Executes multi-statement SQL scripts natively without semicolon splitting (preserving functions, DO blocks, etc.).
-    3. Runs each migration file inside a transaction with checksum tracking in schema_migrations.
-    4. Detects and rolls back partial failures; never marks a migration applied unless commit succeeds.
+    3. Verifies SHA-256 checksums of already-applied migrations to guarantee migration immutability.
+    4. Runs each migration file inside a transaction with checksum tracking in schema_migrations.
+    5. Detects and rolls back partial failures; never marks a migration applied unless commit succeeds.
     """
     raw_conn = conn._conn if hasattr(conn, "_conn") else conn
     is_pg = hasattr(raw_conn, "execute") and not hasattr(raw_conn, "row_factory")
@@ -576,7 +647,7 @@ async def apply_migrations(conn):
         await raw_conn.execute(f"SELECT pg_advisory_lock({MIGRATION_ADVISORY_LOCK_ID});")
 
     try:
-        # 2. Ensure schema_migrations table exists
+        # 2. Ensure schema_migrations table exists with checksum tracking
         if is_pg:
             await raw_conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -586,8 +657,9 @@ async def apply_migrations(conn):
                 checksum TEXT
             );
             """)
-            rows = await raw_conn.fetch("SELECT version FROM schema_migrations ORDER BY version ASC;")
-            applied_versions = {r["version"] for r in rows}
+            await raw_conn.execute("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS checksum TEXT;")
+            rows = await raw_conn.fetch("SELECT version, name, checksum FROM schema_migrations ORDER BY version ASC;")
+            applied_map = {r["version"]: r["checksum"] for r in rows}
         else:
             await raw_conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -597,9 +669,13 @@ async def apply_migrations(conn):
                 checksum TEXT
             );
             """)
-            cursor = await raw_conn.execute("SELECT version FROM schema_migrations;")
+            cursor = await raw_conn.execute("SELECT version, name, checksum FROM schema_migrations;")
             applied_rows = await cursor.fetchall()
-            applied_versions = {r["version"] if isinstance(r, dict) or hasattr(r, "__getitem__") else r[0] for r in applied_rows}
+            applied_map = {
+                (r["version"] if hasattr(r, "__getitem__") and "version" in r else r[0]):
+                (r["checksum"] if hasattr(r, "__getitem__") and "checksum" in r else r[2] if len(r) > 2 else None)
+                for r in applied_rows
+            }
 
         migrations_dir = Path(__file__).resolve().parent / "migrations"
         if not migrations_dir.exists():
@@ -609,12 +685,25 @@ async def apply_migrations(conn):
         migration_files = sorted(migrations_dir.glob("*.sql"))
         for mig_file in migration_files:
             version = mig_file.name.split("_")[0]
-            if version in applied_versions:
+            sql_content = mig_file.read_text(encoding="utf-8")
+            file_checksum = hashlib.sha256(sql_content.encode("utf-8")).hexdigest()
+
+            # Checksum Verification: Check if migration was previously applied and verify immutability
+            if version in applied_map:
+                stored_checksum = applied_map[version]
+                if stored_checksum and stored_checksum != file_checksum:
+                    err_msg = (
+                        f"CRITICAL: Migration integrity violation! Migration '{mig_file.name}' (v{version}) "
+                        f"has been modified after being applied to the database. "
+                        f"Stored SHA-256: {stored_checksum}, Current SHA-256: {file_checksum}. "
+                        f"Applied database migrations must be immutable."
+                    )
+                    logger.error(err_msg)
+                    raise RuntimeError(err_msg)
+                logger.debug(f"Migration {mig_file.name} already applied with matching checksum. Skipping.")
                 continue
 
             logger.info(f"Applying database migration: {mig_file.name}...")
-            sql_content = mig_file.read_text(encoding="utf-8")
-            file_checksum = hashlib.sha256(sql_content.encode("utf-8")).hexdigest()
 
             if is_pg:
                 # In PostgreSQL, execute the entire script transactionally in one call without splitting
@@ -644,19 +733,68 @@ async def apply_migrations(conn):
                 logger.warning(f"Error releasing advisory lock: {e}")
 
 
-async def init_db():
+async def check_schema_compatibility(conn) -> None:
     """
-    Initializes database schema, applies migrations, and seeds development data.
+    Validates that the database schema is compatible and up to date without attempting
+    to perform DDL migrations. Used on startup by non-privileged API and worker services.
+    """
+    raw_conn = conn._conn if hasattr(conn, "_conn") else conn
+    is_pg = hasattr(raw_conn, "execute") and not hasattr(raw_conn, "row_factory")
+
+    migrations_dir = Path(__file__).resolve().parent / "migrations"
+    if not migrations_dir.exists():
+        return
+
+    migration_files = sorted(migrations_dir.glob("*.sql"))
+    required_versions = {m.name.split("_")[0] for m in migration_files}
+
+    try:
+        if is_pg:
+            rows = await raw_conn.fetch("SELECT version FROM schema_migrations;")
+            applied = {r["version"] for r in rows}
+        else:
+            cursor = await raw_conn.execute("SELECT version FROM schema_migrations;")
+            rows = await cursor.fetchall()
+            applied = {r[0] if isinstance(r, (tuple, list)) else r["version"] for r in rows}
+    except Exception as e:
+        raise RuntimeError(
+            "CRITICAL: Database schema validation failed. Table 'schema_migrations' not found. "
+            "Run 'python -m app.cli migrate' with MIGRATION_DATABASE_URL to deploy the schema."
+        ) from e
+
+    missing = required_versions - applied
+    if missing:
+        raise RuntimeError(
+            f"CRITICAL: Database schema is out of date. Missing migrations: {sorted(missing)}. "
+            f"Run 'python -m app.cli migrate' with MIGRATION_DATABASE_URL before starting services."
+        )
+
+
+async def init_db(auto_migrate: Optional[bool] = None):
+    """
+    Initializes database schema, applies migrations, or validates schema compatibility.
     Runs against Supabase PostgreSQL or local SQLite based on configuration.
+    In development or when explicitly requested, applies migrations.
+    In production, validates compatibility and prevents non-privileged services from attempting DDL.
     """
     if settings.is_production:
         settings.validate_production()
 
+    should_migrate = auto_migrate if auto_migrate is not None else (
+        not settings.is_production or bool(settings.MIGRATION_DATABASE_URL)
+    )
+
     if settings.use_postgres:
-        pool = await get_pg_pool()
-        async with pool.acquire() as raw_conn:
-            wrapper = PostgresConnectionWrapper(raw_conn)
-            await apply_migrations(wrapper)
+        if should_migrate:
+            pool = await get_migration_pg_pool()
+            async with pool.acquire() as raw_conn:
+                wrapper = PostgresConnectionWrapper(raw_conn)
+                await apply_migrations(wrapper)
+        else:
+            pool = await get_pg_pool()
+            async with pool.acquire() as raw_conn:
+                wrapper = PostgresConnectionWrapper(raw_conn)
+                await check_schema_compatibility(wrapper)
     else:
         await _init_sqlite_schema()
 
