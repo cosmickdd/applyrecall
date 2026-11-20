@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import uuid
 import jwt
 import hashlib
 from datetime import datetime, timezone, timedelta
@@ -147,6 +148,52 @@ def test_pairing_code_security_and_single_use():
             r_prof = await client.get("/api/profile", headers={"X-Device-Token": device_token})
             assert r_prof.status_code == 200
             assert r_prof.json()["profile"]["user_id"] == DEV_USER_ID
+    asyncio.run(_run())
+
+def test_new_user_profile_autoprovisioning():
+    async def _run():
+        await init_db()
+        test_secret = "test-secret-key-at-least-32-bytes-long!!"
+        original_secret = settings.SUPABASE_JWT_SECRET
+        original_url = settings.SUPABASE_URL
+        settings.SUPABASE_JWT_SECRET = test_secret
+        settings.SUPABASE_URL = "https://test.supabase.co"
+
+        try:
+            new_uid = str(uuid.uuid4())
+            now_ts = int(datetime.now(timezone.utc).timestamp())
+            jwt_payload = {
+                "sub": new_uid,
+                "email": "freshstudent@university.edu",
+                "user_metadata": {"full_name": "Fresh Student"},
+                "aud": "authenticated",
+                "iat": now_ts,
+                "exp": now_ts + 3600,
+                "iss": "https://test.supabase.co/auth/v1"
+            }
+            token = jwt.encode(jwt_payload, test_secret, algorithm="HS256")
+            headers = {"Authorization": f"Bearer {token}"}
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                # 1. User does not exist in profiles yet.
+                # Generate pairing code -> must succeed (200 OK) without 500 error!
+                r_gen = await client.post("/api/auth/pair/generate", headers=headers, json={"device_type": "extension"})
+                assert r_gen.status_code == 200
+                data = r_gen.json()
+                assert len(data["code"]) == 6
+
+                # 2. Verify profile was auto-provisioned with email and metadata
+                r_prof = await client.get("/api/profile", headers=headers)
+                assert r_prof.status_code == 200
+                prof_data = r_prof.json()["profile"]
+                assert prof_data["user_id"] == new_uid
+                assert prof_data["email"] == "freshstudent@university.edu"
+                assert prof_data["full_name"] == "Fresh Student"
+        finally:
+            settings.SUPABASE_JWT_SECRET = original_secret
+            settings.SUPABASE_URL = original_url
+
     asyncio.run(_run())
 
 def test_device_token_authentication_and_revocation():

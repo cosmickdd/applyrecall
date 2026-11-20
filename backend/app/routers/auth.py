@@ -124,7 +124,61 @@ def _validate_supabase_jwt(token: str) -> str:
     if not user_id or not str(user_id).strip():
         raise HTTPException(status_code=401, detail="Token subject claim is missing or empty.")
 
-    return str(user_id)
+    email = str(payload.get("email") or "")
+    metadata = payload.get("user_metadata") or {}
+    full_name = str(metadata.get("full_name") or metadata.get("name") or "")
+
+    return str(user_id), email, full_name
+
+
+async def ensure_profile_exists(
+    conn,
+    user_id: str,
+    email: Optional[str] = None,
+    full_name: Optional[str] = None,
+) -> None:
+    """
+    Ensures a student profile record exists in public.profiles.
+    Auto-provisions new Supabase Auth users on their first API call
+    so downstream foreign key constraints (pairing_codes, applications, etc.)
+    are always satisfied.
+    """
+    cursor = await conn.execute("SELECT id, email, full_name FROM profiles WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    now = now_iso()
+    if not row:
+        pid = new_uuid()
+        await conn.execute(
+            """
+            INSERT INTO profiles (id, user_id, email, full_name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id) DO NOTHING
+            """,
+            (pid, user_id, email or "", full_name or "", now, now),
+        )
+        if hasattr(conn, "commit"):
+            await conn.commit()
+    else:
+        updates = []
+        params = []
+        current_email = row["email"] if "email" in row.keys() else None
+        current_name = row["full_name"] if "full_name" in row.keys() else None
+        if email and not current_email:
+            updates.append("email = ?")
+            params.append(email)
+        if full_name and not current_name:
+            updates.append("full_name = ?")
+            params.append(full_name)
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(now)
+            params.append(user_id)
+            await conn.execute(
+                f"UPDATE profiles SET {', '.join(updates)} WHERE user_id = ?",
+                params,
+            )
+            if hasattr(conn, "commit"):
+                await conn.commit()
 
 
 def _validate_device_token(token: str, conn) -> str:
@@ -192,17 +246,19 @@ async def get_current_user_id(
 
     # If the token is in JWT format (3 dot-separated base64 segments) or we are in production, validate JWT
     if token.count(".") == 2 or settings.is_production:
-        user_id = _validate_supabase_jwt(token)
+        user_id, email, full_name = _validate_supabase_jwt(token)
         if hasattr(conn, "set_session_user"):
             await conn.set_session_user(user_id)
+        await ensure_profile_exists(conn, user_id, email, full_name)
         return user_id
 
     # In development mode, check if SUPABASE_JWT_SECRET is explicitly configured
     if settings.SUPABASE_JWT_SECRET:
         try:
-            user_id = _validate_supabase_jwt(token)
+            user_id, email, full_name = _validate_supabase_jwt(token)
             if hasattr(conn, "set_session_user"):
                 await conn.set_session_user(user_id)
+            await ensure_profile_exists(conn, user_id, email, full_name)
             return user_id
         except HTTPException:
             pass
@@ -256,6 +312,7 @@ async def generate_pairing_code(
     conn=Depends(get_db),
 ):
     """Generates a secure 6-character pairing code valid for 5 minutes."""
+    await ensure_profile_exists(conn, user_id)
     chars = string.ascii_uppercase + string.digits
     code = "".join(secrets.choice(chars) for _ in range(6))
     code_hash = _hash_code(code)

@@ -2,7 +2,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional, Dict, Any
 from app.database import get_db, now_iso, new_uuid, db_transaction
-from app.routers.auth import get_current_user_id
+from app.routers.auth import get_current_user_id, ensure_profile_exists
 from app.models.schemas import (
     ApplicationCreate,
     ApplicationUpdate,
@@ -59,6 +59,7 @@ async def create_application(
     conn = Depends(get_db)
 ):
     """Creates a new application record (from Extension or Dashboard)."""
+    await ensure_profile_exists(conn, user_id)
     # Check for existing pending application for same company and role to avoid duplicates
     cursor = await conn.execute(
         "SELECT * FROM applications WHERE user_id = ? AND lower(company) = ? AND lower(position) = ? LIMIT 1",

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
 from app.database import get_db, now_iso, new_uuid
-from app.routers.auth import get_current_user_id
+from app.routers.auth import get_current_user_id, ensure_profile_exists
 from app.models.schemas import (
     ProfileUpdate,
     ProfileResponse,
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 @router.get("", response_model=Dict[str, Any])
 async def get_profile(user_id: str = Depends(get_current_user_id), conn = Depends(get_db)):
     """Retrieves the complete profile, experiences, and projects for the student."""
+    await ensure_profile_exists(conn, user_id)
     cursor = await conn.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,))
     p_row = await cursor.fetchone()
     if not p_row:
@@ -52,6 +53,7 @@ async def update_profile(
     conn = Depends(get_db)
 ):
     """Updates student profile fields."""
+    await ensure_profile_exists(conn, user_id)
     cursor = await conn.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,))
     existing = await cursor.fetchone()
     if not existing:
@@ -88,6 +90,7 @@ async def add_experience(
     conn = Depends(get_db)
 ):
     """Adds a new work or internship experience."""
+    await ensure_profile_exists(conn, user_id)
     exp_id = new_uuid()
     now = now_iso()
     await conn.execute("""
@@ -129,6 +132,7 @@ async def add_project(
     conn = Depends(get_db)
 ):
     """Adds a project entry."""
+    await ensure_profile_exists(conn, user_id)
     proj_id = new_uuid()
     now = now_iso()
     await conn.execute("""
