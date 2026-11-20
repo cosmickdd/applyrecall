@@ -267,33 +267,52 @@ GRANT SELECT, UPDATE (status, attempts, last_attempt_at, error_message, next_ret
 GRANT SELECT (user_id, chat_id, is_active) ON telegram_connections TO applyrecall_worker;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO applyrecall_worker;
 
--- Student ownership policies
-CREATE POLICY "Users can only access own profile" ON profiles FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own experiences" ON experiences FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own projects" ON projects FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own answers" ON answers FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own applications" ON applications FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own application_answers" ON application_answers FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own application_events" ON application_events FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own reminders" ON reminders FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own telegram_connections" ON telegram_connections FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own pairing_codes" ON pairing_codes FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
-CREATE POLICY "Users can only access own device_connections" ON device_connections FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+-- Policies (with dynamic idempotent cleanup)
+DO $$
+DECLARE
+    pol RECORD;
+BEGIN
+    FOR pol IN 
+        SELECT schemaname, tablename, policyname 
+        FROM pg_policies 
+        WHERE schemaname = 'public' 
+          AND tablename IN (
+              'profiles', 'experiences', 'projects', 'answers', 
+              'applications', 'application_answers', 'application_events', 
+              'reminders', 'telegram_connections', 'pairing_codes', 'device_connections'
+          )
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I;', pol.policyname, pol.schemaname, pol.tablename);
+    END LOOP;
 
--- Worker policies
-CREATE POLICY "Worker can view applications for reminders" ON applications FOR SELECT TO applyrecall_worker USING (true);
-CREATE POLICY "Worker can view and update reminders" ON reminders FOR ALL TO applyrecall_worker USING (true) WITH CHECK (true);
-CREATE POLICY "Worker can view active telegram connections" ON telegram_connections FOR SELECT TO applyrecall_worker USING (is_active = TRUE);
+    -- Student ownership policies
+    CREATE POLICY "Users can only access own profile" ON profiles FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own experiences" ON experiences FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own projects" ON projects FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own answers" ON answers FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own applications" ON applications FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own application_answers" ON application_answers FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own application_events" ON application_events FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own reminders" ON reminders FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own telegram_connections" ON telegram_connections FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own pairing_codes" ON pairing_codes FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
+    CREATE POLICY "Users can only access own device_connections" ON device_connections FOR ALL TO applyrecall_app, authenticated USING (user_id = get_current_user_id()) WITH CHECK (user_id = get_current_user_id());
 
--- Backend API pre-auth policies
-CREATE POLICY "App backend can lookup telegram connections" ON telegram_connections FOR SELECT TO applyrecall_app USING (true);
-CREATE POLICY "App backend can link telegram connections" ON telegram_connections FOR INSERT TO applyrecall_app WITH CHECK (true);
-CREATE POLICY "App backend can update telegram connections" ON telegram_connections FOR UPDATE TO applyrecall_app USING (true) WITH CHECK (true);
+    -- Worker policies
+    CREATE POLICY "Worker can view applications for reminders" ON applications FOR SELECT TO applyrecall_worker USING (true);
+    CREATE POLICY "Worker can view and update reminders" ON reminders FOR ALL TO applyrecall_worker USING (true) WITH CHECK (true);
+    CREATE POLICY "Worker can view active telegram connections" ON telegram_connections FOR SELECT TO applyrecall_worker USING (is_active = TRUE);
 
-CREATE POLICY "App backend can verify pairing codes" ON pairing_codes FOR SELECT TO applyrecall_app USING (true);
-CREATE POLICY "App backend can consume pairing codes" ON pairing_codes FOR UPDATE TO applyrecall_app USING (true) WITH CHECK (true);
-CREATE POLICY "App backend can generate pairing codes" ON pairing_codes FOR INSERT TO applyrecall_app WITH CHECK (true);
+    -- Backend API pre-auth policies
+    CREATE POLICY "App backend can lookup telegram connections" ON telegram_connections FOR SELECT TO applyrecall_app USING (true);
+    CREATE POLICY "App backend can link telegram connections" ON telegram_connections FOR INSERT TO applyrecall_app WITH CHECK (true);
+    CREATE POLICY "App backend can update telegram connections" ON telegram_connections FOR UPDATE TO applyrecall_app USING (true) WITH CHECK (true);
 
-CREATE POLICY "App backend can verify device tokens" ON device_connections FOR SELECT TO applyrecall_app USING (true);
-CREATE POLICY "App backend can touch device tokens" ON device_connections FOR UPDATE TO applyrecall_app USING (true) WITH CHECK (true);
-CREATE POLICY "App backend can register device tokens" ON device_connections FOR INSERT TO applyrecall_app WITH CHECK (true);
+    CREATE POLICY "App backend can verify pairing codes" ON pairing_codes FOR SELECT TO applyrecall_app USING (true);
+    CREATE POLICY "App backend can consume pairing codes" ON pairing_codes FOR UPDATE TO applyrecall_app USING (true) WITH CHECK (true);
+    CREATE POLICY "App backend can generate pairing codes" ON pairing_codes FOR INSERT TO applyrecall_app WITH CHECK (true);
+
+    CREATE POLICY "App backend can verify device tokens" ON device_connections FOR SELECT TO applyrecall_app USING (true);
+    CREATE POLICY "App backend can touch device tokens" ON device_connections FOR UPDATE TO applyrecall_app USING (true) WITH CHECK (true);
+    CREATE POLICY "App backend can register device tokens" ON device_connections FOR INSERT TO applyrecall_app WITH CHECK (true);
+END $$;

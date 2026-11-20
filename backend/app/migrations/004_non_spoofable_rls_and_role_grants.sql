@@ -105,45 +105,50 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- 7. Drop all legacy policies that referenced app.is_worker or app.is_system
+-- 7. Drop all legacy policies and establish non-spoofable role-based policies
 DO $$
+DECLARE
+    pol RECORD;
 BEGIN
+    -- 7a. Dynamically clean up any pre-existing policies on all 11 user tables
+    FOR pol IN 
+        SELECT schemaname, tablename, policyname 
+        FROM pg_policies 
+        WHERE schemaname = 'public' 
+          AND tablename IN (
+              'profiles', 'experiences', 'projects', 'answers', 
+              'applications', 'application_answers', 'application_events', 
+              'reminders', 'telegram_connections', 'pairing_codes', 'device_connections'
+          )
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I;', pol.policyname, pol.schemaname, pol.tablename);
+    END LOOP;
+
     -- Profiles
-    DROP POLICY IF EXISTS "Users can only access own profile" ON profiles;
-    DROP POLICY IF EXISTS "Users can access their own profile" ON profiles;
     CREATE POLICY "Users can only access own profile" ON profiles
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
         WITH CHECK (user_id = get_current_user_id());
 
     -- Experiences
-    DROP POLICY IF EXISTS "Users can only access own experiences" ON experiences;
-    DROP POLICY IF EXISTS "Users can access their own experiences" ON experiences;
     CREATE POLICY "Users can only access own experiences" ON experiences
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
         WITH CHECK (user_id = get_current_user_id());
 
     -- Projects
-    DROP POLICY IF EXISTS "Users can only access own projects" ON projects;
-    DROP POLICY IF EXISTS "Users can access their own projects" ON projects;
     CREATE POLICY "Users can only access own projects" ON projects
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
         WITH CHECK (user_id = get_current_user_id());
 
     -- Answers (Answer Library: Worker has ZERO access)
-    DROP POLICY IF EXISTS "Users can only access own answers" ON answers;
-    DROP POLICY IF EXISTS "Users can access their own answers" ON answers;
     CREATE POLICY "Users can only access own answers" ON answers
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
         WITH CHECK (user_id = get_current_user_id());
 
     -- Applications: Owner full access; Worker SELECT only
-    DROP POLICY IF EXISTS "Users can only access own applications" ON applications;
-    DROP POLICY IF EXISTS "Users full access or worker read applications" ON applications;
-    DROP POLICY IF EXISTS "Users can access their own applications" ON applications;
     CREATE POLICY "Users can only access own applications" ON applications
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
@@ -154,25 +159,18 @@ BEGIN
         USING (true);
 
     -- Application Answers: Strictly owner only
-    DROP POLICY IF EXISTS "Users can only access own application_answers" ON application_answers;
-    DROP POLICY IF EXISTS "Users can access their own application answers" ON application_answers;
     CREATE POLICY "Users can only access own application_answers" ON application_answers
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
         WITH CHECK (user_id = get_current_user_id());
 
     -- Application Events: Owner full access
-    DROP POLICY IF EXISTS "Users can only access own application_events" ON application_events;
-    DROP POLICY IF EXISTS "Users can access their own application events" ON application_events;
     CREATE POLICY "Users can only access own application_events" ON application_events
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
         WITH CHECK (user_id = get_current_user_id());
 
     -- Reminders: Owner full access; Worker can claim and update
-    DROP POLICY IF EXISTS "Users can only access own reminders" ON reminders;
-    DROP POLICY IF EXISTS "Users and worker access reminders" ON reminders;
-    DROP POLICY IF EXISTS "Users can access their own reminders" ON reminders;
     CREATE POLICY "Users can only access own reminders" ON reminders
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
@@ -184,9 +182,6 @@ BEGIN
         WITH CHECK (true);
 
     -- Telegram Connections: Owner full access; Worker can view active chat IDs; App backend can link & lookup
-    DROP POLICY IF EXISTS "Users can only access own telegram_connections" ON telegram_connections;
-    DROP POLICY IF EXISTS "Users and system access telegram_connections" ON telegram_connections;
-    DROP POLICY IF EXISTS "Users can access their own telegram connections" ON telegram_connections;
     CREATE POLICY "Users can only access own telegram_connections" ON telegram_connections
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
@@ -210,9 +205,6 @@ BEGIN
         WITH CHECK (true);
 
     -- Pairing Codes: Owner access; App backend can verify and consume
-    DROP POLICY IF EXISTS "Users can only access own pairing_codes" ON pairing_codes;
-    DROP POLICY IF EXISTS "Users and system access pairing_codes" ON pairing_codes;
-    DROP POLICY IF EXISTS "Users can access their own pairing codes" ON pairing_codes;
     CREATE POLICY "Users can only access own pairing_codes" ON pairing_codes
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
@@ -232,9 +224,6 @@ BEGIN
         WITH CHECK (true);
 
     -- Device Connections: Owner access; App backend can verify tokens and update last_used_at
-    DROP POLICY IF EXISTS "Users can only access own device_connections" ON device_connections;
-    DROP POLICY IF EXISTS "Users and system access device_connections" ON device_connections;
-    DROP POLICY IF EXISTS "Users can access their own device connections" ON device_connections;
     CREATE POLICY "Users can only access own device_connections" ON device_connections
         FOR ALL TO applyrecall_app, authenticated
         USING (user_id = get_current_user_id())
