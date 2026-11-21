@@ -71,13 +71,24 @@
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
       </div>
-      <h2 class="hero-title">Connect your account</h2>
+      <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider mb-1">
+        <span>🔒 Website Login Required</span>
+      </div>
+      <h2 class="hero-title">Log In to ApplyRecall</h2>
       <p class="hero-subtitle">
-        Enter your 6-character code from your dashboard settings to sync your verified profile and approved answers.
+        To autofill applications and recall your approved essays, you must have an active ApplyRecall account and be logged into the website.
       </p>
 
-      <div class="pairing-box mt-3">
-        <label for="pairing-code-input" class="input-label text-center">Pairing Code</label>
+      <button id="sync-website-btn" class="btn btn-primary btn-full mt-3">
+        ✨ Sync from Active Website Login
+      </button>
+
+      <div class="divider-text mt-3">
+        <span>or enter code from website</span>
+      </div>
+
+      <div class="pairing-box mt-2">
+        <label for="pairing-code-input" class="input-label text-center">6-Digit Pairing Code</label>
         <input
           type="text"
           id="pairing-code-input"
@@ -88,20 +99,16 @@
           autocapitalize="characters"
           spellcheck="false"
         />
-        <div class="pairing-guide mt-2">
-          <span>Need a code? Go to </span>
-          <a id="dashboard-settings-link" href="https://applyrecall.vercel.app/settings" target="_blank" class="guide-link">
+        <div class="pairing-guide mt-1">
+          <span>Get code from </span>
+          <a id="dashboard-settings-link" href="http://localhost:3000/settings" target="_blank" class="guide-link">
             Dashboard &gt; Settings
           </a>
         </div>
       </div>
 
-      <button id="connect-btn" class="btn btn-primary btn-full mt-3">
-        Connect Extension
-      </button>
-
-      <button id="dev-quick-connect-btn" class="btn btn-ghost btn-full mt-2 text-xs">
-        Use Default Student Profile (Dev)
+      <button id="connect-btn" class="btn btn-secondary btn-full mt-2">
+        Verify Code &amp; Link
       </button>
     </section>
 

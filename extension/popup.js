@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Pairing Elements
   const pairingCodeInput = document.getElementById("pairing-code-input");
   const connectBtn = document.getElementById("connect-btn");
-  const devQuickConnectBtn = document.getElementById("dev-quick-connect-btn");
+  const syncWebsiteBtn = document.getElementById("sync-website-btn");
 
   // Job Context Elements
   const jobCompanyEl = document.getElementById("job-company");
@@ -422,36 +422,82 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Developer Quick Connect (dev mode fallback)
-  devQuickConnectBtn.addEventListener("click", async () => {
-    try {
-      devQuickConnectBtn.textContent = "Connecting...";
-      const genResp = await fetch(`${API_BASE}/auth/pair/generate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer 00000000-0000-0000-0000-000000000001"
-        },
-        body: JSON.stringify({ device_type: "extension" })
-      });
+  // Sync from Active Website Login
+  if (syncWebsiteBtn) {
+    syncWebsiteBtn.addEventListener("click", async () => {
+      try {
+        syncWebsiteBtn.textContent = "Checking Website Session...";
+        syncWebsiteBtn.disabled = true;
 
-      if (!genResp.ok) {
-        showToast("Backend not reachable or running in production mode.", "error");
-        return;
-      }
+        // Query open tabs for ApplyRecall dashboard
+        const tabs = await chrome.tabs.query({});
+        const dashTabs = tabs.filter(t => t.url && (
+          t.url.includes("localhost:3000") ||
+          t.url.includes("127.0.0.1:3000") ||
+          t.url.includes("applyrecall.vercel.app") ||
+          t.url.includes("applyrecall.onrender.com")
+        ));
 
-      const genData = await genResp.json();
-      const verifyResp = await fetch(`${API_BASE}/auth/pair/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: genData.code,
-          device_type: "extension",
-          device_name: "Dev Extension"
-        })
-      });
+        if (dashTabs.length === 0) {
+          showToast("Opening ApplyRecall website to log in...", "error");
+          chrome.tabs.create({ url: `${DASHBOARD_BASE}/login` });
+          return;
+        }
 
-      if (verifyResp.ok) {
+        // Check if user is logged into the open website tab
+        let foundToken = null;
+        for (const tab of dashTabs) {
+          try {
+            const [res] = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: () => localStorage.getItem("applyrecall_token")
+            });
+            if (res && res.result) {
+              foundToken = res.result;
+              break;
+            }
+          } catch (_) {}
+        }
+
+        if (!foundToken) {
+          showToast("Please log in to ApplyRecall in your browser first.", "error");
+          chrome.tabs.update(dashTabs[0].id, { active: true });
+          return;
+        }
+
+        // Use active website token to link extension
+        const headers = { "Content-Type": "application/json" };
+        if (foundToken.startsWith("eyJ")) {
+          headers["Authorization"] = `Bearer ${foundToken}`;
+        } else {
+          headers["X-Device-Token"] = foundToken;
+        }
+
+        const genResp = await fetch(`${API_BASE}/auth/pair/generate`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ device_type: "extension" })
+        });
+
+        if (!genResp.ok) {
+          throw new Error("Could not link with website session. Please enter the pairing code from Settings.");
+        }
+
+        const genData = await genResp.json();
+        const verifyResp = await fetch(`${API_BASE}/auth/pair/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: genData.code,
+            device_type: "extension",
+            device_name: "Chrome Browser Extension"
+          })
+        });
+
+        if (!verifyResp.ok) {
+          throw new Error("Extension pairing verification failed.");
+        }
+
         const verifyData = await verifyResp.json();
         currentContext.deviceToken = verifyData.token;
         currentContext.profile = verifyData.profile;
@@ -462,15 +508,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
 
         renderConnectedState();
-        showToast("Connected to dev student profile.");
+        showToast("Connected to your logged-in ApplyRecall account!");
         await inspectActiveTab();
+      } catch (err) {
+        showToast(err.message || "Failed to link from website.", "error");
+      } finally {
+        syncWebsiteBtn.textContent = "✨ Sync from Active Website Login";
+        syncWebsiteBtn.disabled = false;
       }
-    } catch (e) {
-      showToast("Could not connect to backend at " + API_BASE, "error");
-    } finally {
-      devQuickConnectBtn.textContent = "Use Default Student Profile (Dev)";
-    }
-  });
+    });
+  }
 
   // Track Application in Dashboard
   startAppBtn.addEventListener("click", async () => {

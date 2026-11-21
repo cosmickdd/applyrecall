@@ -23,6 +23,7 @@ const navItems = [
   { name: 'Overview', href: '/overview', icon: LayoutDashboard },
   { name: 'Applications', href: '/applications', icon: Briefcase },
   { name: 'Answer Library', href: '/answers', icon: BookOpen },
+  { name: 'Chrome Extension', href: '/extension', icon: Puzzle },
   { name: 'Landing Page', href: '/', icon: Sparkles },
   { name: 'My Profile', href: '/profile', icon: User },
   { name: 'Reminders', href: '/reminders', icon: Bell },

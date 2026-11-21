@@ -10,7 +10,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { token, loading, isConfigured } = useAuth();
 
-  const isPublicPage = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/landing' || pathname?.startsWith('/auth/');
+  const isAuthOrLanding = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/landing' || pathname?.startsWith('/auth/');
+  const isExtensionPage = pathname === '/extension';
+  const isPublicPage = isAuthOrLanding || isExtensionPage;
 
   useEffect(() => {
     if (!loading && isConfigured && !token && !isPublicPage) {
@@ -18,7 +20,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [loading, isConfigured, token, isPublicPage, router]);
 
-  if (isPublicPage) {
+  if (isAuthOrLanding || (isExtensionPage && !token)) {
     return <main className="min-h-screen">{children}</main>;
   }
 

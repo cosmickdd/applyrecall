@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import TopBar from '@/components/TopBar';
 import { 
   Settings as SettingsIcon, 
@@ -167,6 +168,25 @@ export default function SettingsPage() {
                   {extLoading ? 'Generating...' : extCode ? 'Regenerate Code' : 'Generate Code'}
                 </button>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-edge-default">
+              <Link
+                href="/extension"
+                className="flex-1 py-2 px-3 text-xs font-semibold bg-brand-light text-brand-blue border border-brand-blue/20 rounded-btn hover:bg-brand-blue hover:text-white transition-all flex items-center justify-center gap-1.5"
+              >
+                <Puzzle className="w-3.5 h-3.5" />
+                <span>View Load Unpacked Setup Guide</span>
+              </Link>
+              <a
+                href="/applyrecall-extension.zip"
+                download="applyrecall-extension.zip"
+                className="py-2 px-3 text-xs font-semibold bg-white border border-edge-default rounded-btn text-ink-primary hover:bg-brand-subtle transition-all flex items-center gap-1.5 shadow-subtle"
+                title="Download Extension ZIP"
+              >
+                <Download className="w-3.5 h-3.5 text-brand-blue" />
+                <span>Download .ZIP</span>
+              </a>
             </div>
           </section>
 

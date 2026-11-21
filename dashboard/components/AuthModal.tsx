@@ -14,8 +14,7 @@ import {
   CheckCircle2,
   Loader2,
   ArrowRight,
-  RotateCw,
-  Sparkles
+  RotateCw
 } from 'lucide-react'
 
 export interface AuthModalProps {
@@ -141,14 +140,6 @@ export default function AuthModal({
     } finally {
       setResendLoading(false)
     }
-  }
-
-  const handleDemoBypass = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('applyrecall_token', '00000000-0000-0000-0000-000000000001')
-    }
-    onClose()
-    router.push('/overview')
   }
 
   const isEmailNotConfirmed = error?.toLowerCase().includes('email not confirmed')
@@ -383,19 +374,6 @@ export default function AuthModal({
             )}
           </button>
         </form>
-
-        {/* Demo / Quick Access */}
-        <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs text-slate-400">
-          <span>Testing or reviewing?</span>
-          <button
-            type="button"
-            onClick={handleDemoBypass}
-            className="text-[#8fcbff] hover:text-white font-medium flex items-center gap-1 transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Continue to Dashboard</span>
-          </button>
-        </div>
       </div>
     </div>
   )

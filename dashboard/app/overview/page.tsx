@@ -273,20 +273,23 @@ export default function OverviewPage() {
             <section className="bg-brand-surface p-6 rounded-card border border-edge-default shadow-subtle">
               <h2 className="text-base font-semibold text-ink-primary mb-3">Connected Surfaces</h2>
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-btn bg-brand-soft border border-edge-default">
+                <Link
+                  href="/extension"
+                  className="flex items-center justify-between p-3 rounded-btn bg-brand-soft border border-edge-default hover:border-brand-blue/30 transition-colors group"
+                >
                   <div className="flex items-center gap-2.5">
                     <Puzzle className="w-4 h-4 text-brand-blue" />
                     <div>
-                      <span className="text-xs font-semibold text-ink-primary block leading-tight">Chrome Extension</span>
+                      <span className="text-xs font-semibold text-ink-primary block leading-tight group-hover:text-brand-blue transition-colors">Chrome Extension</span>
                       <span className="text-[11px] text-ink-muted">Autofill &amp; job detection</span>
                     </div>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    summary?.extension_connected ? 'bg-emerald-100 text-status-success' : 'bg-slate-200 text-slate-600'
+                    summary?.extension_connected ? 'bg-emerald-100 text-status-success' : 'bg-brand-light text-brand-blue'
                   }`}>
-                    {summary?.extension_connected ? 'Ready' : 'Link via Code'}
+                    {summary?.extension_connected ? 'Ready' : 'Download & Link'}
                   </span>
-                </div>
+                </Link>
 
                 <div className="flex items-center justify-between p-3 rounded-btn bg-brand-soft border border-edge-default">
                   <div className="flex items-center gap-2.5">

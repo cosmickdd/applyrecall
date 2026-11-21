@@ -1,6 +1,7 @@
 'use client';
 
-import { Bell, RefreshCw, Search } from 'lucide-react';
+import { Bell, RefreshCw, Search, Puzzle } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 
@@ -41,6 +42,15 @@ export default function TopBar({ title, onSearch }: TopBarProps) {
             {notification}
           </div>
         )}
+
+        <Link
+          href="/extension"
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-btn bg-brand-light text-brand-blue border border-brand-blue/20 hover:bg-brand-blue hover:text-white transition-all shadow-subtle"
+          title="Download Chrome Extension & view setup guide"
+        >
+          <Puzzle className="w-3.5 h-3.5" />
+          <span>Download Extension</span>
+        </Link>
 
         <button
           onClick={handleCheckReminders}

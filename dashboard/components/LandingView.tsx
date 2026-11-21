@@ -125,7 +125,7 @@ export default function LandingView({
     { label: 'Overview', href: '#overview', active: true },
     { label: 'Features', href: '#features' },
     { label: 'Answer Library', href: '#answers' },
-    { label: 'Extension', href: '#extension' },
+    { label: 'Download Extension', href: '/extension' },
     { label: 'Telegram Bot', href: '#telegram' },
     { label: 'Sign In', href: '#signin', onClick: openSignIn },
     { label: 'Sign Up', href: '#signup', onClick: openSignUp },
@@ -148,7 +148,7 @@ export default function LandingView({
         signIn={{ label: 'Sign In', href: '#signin', onClick: openSignIn }}
         signUp={{ label: 'Sign Up', href: '#signup', onClick: openSignUp }}
         primaryAction={{ label: 'Get Started Free', href: '#signup', onClick: openSignUp }}
-        secondaryAction={{ label: 'Open Dashboard', href: '#signin', onClick: openSignIn }}
+        secondaryAction={{ label: 'Download Extension', href: '/extension' }}
         stats={STATS}
         features={FEATURES}
         fonts={{
