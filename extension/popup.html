@@ -7,139 +7,224 @@
   <link rel="stylesheet" href="popup.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="popup-container">
     <!-- Header -->
     <header class="app-header">
       <div class="brand-group">
-        <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="brand-logo-wrap">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
             <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
           </svg>
         </div>
         <div>
           <h1 class="brand-title">ApplyRecall</h1>
-          <p class="brand-tagline">Application Memory</p>
+          <p class="brand-subtitle">Application Memory</p>
         </div>
       </div>
-      <div id="connection-badge" class="badge badge-neutral">Offline</div>
+
+      <div class="header-actions">
+        <div id="connection-badge" class="status-pill status-pill-offline">
+          <span class="status-dot"></span>
+          <span id="connection-text">Offline</span>
+        </div>
+        <button id="toggle-settings-btn" class="icon-btn" title="Environment & Server Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
     </header>
 
-    <!-- Feedback Toast -->
+    <!-- Feedback Toast Notification -->
     <div id="status-toast" class="toast hidden"></div>
 
-    <!-- STATE A: Not Connected -->
-    <section id="state-not-connected" class="state-card hidden">
-      <div class="empty-icon-wrap">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2142E7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-          <line x1="6" y1="6" x2="6.01" y2="6"></line>
-          <line x1="6" y1="18" x2="6.01" y2="18"></line>
+    <!-- SERVER CONFIG DRAWER (Collapsible) -->
+    <div id="server-config-drawer" class="config-drawer hidden">
+      <div class="config-drawer-header">
+        <span class="drawer-title">⚙️ Connection Settings</span>
+        <button id="close-settings-btn" class="drawer-close">&times;</button>
+      </div>
+      <div class="form-group mt-2">
+        <label class="input-label" for="api-url-input">API Server Base URL</label>
+        <input type="text" id="api-url-input" class="text-input text-xs" placeholder="https://applyrecall.onrender.com/api" />
+      </div>
+      <div class="form-group mt-2">
+        <label class="input-label" for="dashboard-url-input">Dashboard Web App URL</label>
+        <input type="text" id="dashboard-url-input" class="text-input text-xs" placeholder="https://applyrecall.vercel.app" />
+      </div>
+      <div class="config-btn-row mt-2">
+        <button id="save-api-url-btn" class="btn btn-sm btn-primary flex-1">Save Configuration</button>
+        <button id="reset-prod-url-btn" class="btn btn-sm btn-secondary" title="Use Live Cloud Production">Cloud Prod</button>
+        <button id="reset-dev-url-btn" class="btn btn-sm btn-secondary" title="Use Local Dev Server">Localhost</button>
+      </div>
+    </div>
+
+    <!-- STATE 1: NOT CONNECTED (Pairing Screen) -->
+    <section id="state-not-connected" class="card card-hero hidden">
+      <div class="hero-icon-bubble">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
       </div>
-      <h2 class="card-heading">Connect your account</h2>
-      <p class="card-description">
-        Link your existing ApplyRecall account to remember your application details and approved answers.
+      <h2 class="hero-title">Connect your account</h2>
+      <p class="hero-subtitle">
+        Enter your 6-character code from your dashboard settings to sync your verified profile and approved answers.
       </p>
-      
-      <div class="form-group">
-        <label for="pairing-code-input" class="input-label">Pairing Code</label>
-        <input type="text" id="pairing-code-input" class="text-input" placeholder="e.g. 8K2M9P" maxlength="6" />
-        <span class="input-hint">Generate a code in Dashboard &gt; Settings</span>
+
+      <div class="pairing-box mt-3">
+        <label for="pairing-code-input" class="input-label text-center">Pairing Code</label>
+        <input
+          type="text"
+          id="pairing-code-input"
+          class="code-input"
+          placeholder="••••••"
+          maxlength="6"
+          autocomplete="off"
+          autocapitalize="characters"
+          spellcheck="false"
+        />
+        <div class="pairing-guide mt-2">
+          <span>Need a code? Go to </span>
+          <a id="dashboard-settings-link" href="https://applyrecall.vercel.app/settings" target="_blank" class="guide-link">
+            Dashboard &gt; Settings
+          </a>
+        </div>
       </div>
 
-      <button id="connect-btn" class="btn btn-primary btn-full">
+      <button id="connect-btn" class="btn btn-primary btn-full mt-3">
         Connect Extension
       </button>
-      <button id="dev-quick-connect-btn" class="btn btn-ghost btn-full mt-2">
-        Use Default Student Profile
+
+      <button id="dev-quick-connect-btn" class="btn btn-ghost btn-full mt-2 text-xs">
+        Use Default Student Profile (Dev)
       </button>
     </section>
 
-    <!-- STATE I/J: Submission Confirmation Modal / Card -->
-    <section id="state-submission-confirm" class="state-card alert-card hidden">
-      <div class="alert-header">
-        <span class="alert-icon">✓</span>
+    <!-- STATE 2: SUBMISSION CONFIRMATION MODAL -->
+    <section id="state-submission-confirm" class="card alert-card hidden">
+      <div class="alert-top">
+        <div class="alert-icon-wrap">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
         <div>
-          <h2 class="card-heading">Have you submitted this application?</h2>
-          <p class="card-description">We noticed you submitted the form. Confirming keeps your dashboard updated.</p>
+          <h2 class="alert-title">Application Submitted! 🎉</h2>
+          <p class="alert-desc">Would you like to track this opportunity and schedule an automatic follow-up reminder?</p>
         </div>
       </div>
-      <div class="submission-checkbox-wrap">
-        <label class="checkbox-label">
+      <div class="reminder-option mt-2">
+        <label class="custom-checkbox">
           <input type="checkbox" id="schedule-reminder-check" checked />
-          <span>Schedule follow-up reminder in 7 days</span>
+          <span class="checkbox-box"></span>
+          <span class="checkbox-text">Schedule follow-up reminder in 7 days</span>
         </label>
       </div>
-      <div class="button-row mt-3">
-        <button id="confirm-applied-btn" class="btn btn-primary flex-1">Yes, mark as applied</button>
-        <button id="dismiss-submission-btn" class="btn btn-secondary">Not yet</button>
+      <div class="btn-row mt-3">
+        <button id="confirm-applied-btn" class="btn btn-sm btn-primary flex-1">Yes, mark as Applied</button>
+        <button id="dismiss-submission-btn" class="btn btn-sm btn-secondary">Not now</button>
       </div>
     </section>
 
-    <!-- STATE B / C / D / E: Active Job & Context -->
-    <main id="state-connected" class="hidden">
-      <!-- Active Job Card -->
-      <section class="section-card">
-        <div class="section-header">
-          <span class="section-subtitle">CURRENTLY APPLYING TO</span>
+    <!-- STATE 3: CONNECTED WORKSPACE -->
+    <main id="state-connected" class="workspace-main hidden">
+      <!-- Opportunity Context Card -->
+      <section class="card job-card">
+        <div class="card-header">
+          <div class="card-label-group">
+            <span class="card-eyebrow">TARGET OPPORTUNITY</span>
+            <span id="ats-badge" class="ats-badge">Web Form</span>
+          </div>
           <span id="active-status-badge" class="badge badge-blue">Ready</span>
         </div>
-        <div class="job-meta-wrap">
-          <h2 id="job-company" class="job-company">Detecting job...</h2>
+
+        <div class="job-info-body">
+          <h2 id="job-company" class="job-company">Scanning current tab...</h2>
           <div id="job-position" class="job-position">Checking page context</div>
-          <div class="job-submeta">
-            <span id="job-source" class="source-tag">Web listing</span>
-            <span id="job-location" class="location-tag"></span>
+
+          <div class="job-meta-row">
+            <span id="job-source" class="meta-tag">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line></svg>
+              <span>Web</span>
+            </span>
+            <span id="job-location" class="meta-tag hidden">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              <span id="location-text"></span>
+            </span>
           </div>
         </div>
 
-        <div id="start-app-action" class="mt-3">
-          <button id="start-application-btn" class="btn btn-secondary btn-full">
-            Start Application Context
+        <div class="card-action-bar mt-2">
+          <button id="start-application-btn" class="btn btn-sm btn-secondary btn-full">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 5px;"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            <span>Track in ApplyRecall Dashboard</span>
           </button>
         </div>
       </section>
 
-      <!-- Autofill Card -->
-      <section class="section-card mt-3">
-        <div class="section-header">
-          <span class="section-subtitle">FORM MEMORY</span>
-          <span id="detected-fields-count" class="badge badge-neutral">Scanning...</span>
+      <!-- Smart Autofill Center -->
+      <section class="card autofill-card mt-3">
+        <div class="card-header">
+          <div class="card-label-group">
+            <span class="card-eyebrow">INTELLIGENT AUTOFILL</span>
+            <span id="detected-fields-count" class="badge badge-neutral">Scanning form...</span>
+          </div>
+          <button id="rescan-btn" class="icon-btn-sm" title="Re-scan page fields">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          </button>
         </div>
-        <p class="card-description text-sm">
-          Autofills approved personal details and matches saved answers for essay questions. Passwords and file uploads are safely skipped.
-        </p>
 
-        <button id="autofill-btn" class="btn btn-primary btn-full mt-3">
-          Autofill this application
+        <!-- Capability Pills -->
+        <div class="capability-pills mt-1">
+          <span class="cap-pill" title="First & Last Name, Email, Phone">👤 Personal Info</span>
+          <span class="cap-pill" title="College, Degree, Graduation">🎓 Education</span>
+          <span class="cap-pill" title="LinkedIn, GitHub, Portfolio">🔗 Links</span>
+          <span class="cap-pill" title="Approved Library Answers">✍️ Answers</span>
+        </div>
+
+        <!-- Safe Mode Toggle -->
+        <div class="safe-mode-toggle-row mt-2">
+          <label class="custom-checkbox">
+            <input type="checkbox" id="safe-mode-check" checked />
+            <span class="checkbox-box"></span>
+            <span class="checkbox-text text-xs">Safe mode (skip non-empty fields)</span>
+          </label>
+        </div>
+
+        <!-- Primary Autofill Action -->
+        <button id="autofill-btn" class="btn btn-primary btn-full btn-lg mt-3">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right: 6px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          <span>Autofill this Application</span>
         </button>
 
+        <!-- Live Results Accordion -->
         <div id="autofill-results" class="results-panel hidden mt-3">
-          <div class="results-header">
-            <span id="results-count-badge" class="badge badge-success">Filled</span>
-            <span id="results-text" class="text-xs text-muted">Review populated fields below:</span>
+          <div class="results-top">
+            <span id="results-count-badge" class="badge badge-success">0 Filled</span>
+            <span id="results-text" class="text-xs text-muted">Populated & verified fields:</span>
           </div>
-          <ul id="filled-items-list" class="filled-list"></ul>
+          <ul id="filled-items-list" class="filled-list mt-1"></ul>
         </div>
       </section>
 
-      <!-- STATE H: New Question Detected / Save on the go -->
-      <section id="new-question-section" class="section-card mt-3">
-        <div class="section-header">
-          <span class="section-subtitle">SAVE NEW ANSWER</span>
+      <!-- Smart Answers & Question Library -->
+      <section id="new-question-section" class="card mt-3">
+        <div class="card-header">
+          <span class="card-eyebrow">ESSAY &amp; ANSWER ASSISTANT</span>
           <span class="badge badge-amber">Smart Memory</span>
         </div>
-        <p class="card-description text-sm">
-          Save an answer you just wrote so ApplyRecall can offer it on future applications.
+        <p class="card-desc text-xs mt-1">
+          Save an answer from this application to automatically reuse on future opportunities.
         </p>
 
         <div class="form-group mt-2">
           <label class="input-label" for="new-q-text">Question Prompt</label>
-          <input type="text" id="new-q-text" class="text-input" placeholder="e.g. Why do you want to join our team?" />
+          <input type="text" id="new-q-text" class="text-input" placeholder="e.g. Why do you want to join our engineering team?" />
         </div>
 
         <div class="form-group mt-2">
@@ -148,11 +233,11 @@
         </div>
 
         <div class="form-group mt-2">
-          <label class="input-label">Save Scope</label>
-          <select id="new-scope-select" class="text-input">
-            <option value="general">Universal (General answer for all companies)</option>
+          <label class="input-label" for="new-scope-select">Reuse Scope</label>
+          <select id="new-scope-select" class="text-input select-input">
+            <option value="general">Universal (Offer for all applications)</option>
             <option value="company">Company-specific (Only for this company)</option>
-            <option value="application">Application-specific (Only for this role)</option>
+            <option value="application">Role-specific (Only for this position)</option>
           </select>
         </div>
 
@@ -165,27 +250,17 @@
     <!-- Footer -->
     <footer class="app-footer">
       <div class="footer-links">
-        <a id="open-dashboard-link" href="https://applyrecall.vercel.app" target="_blank" class="footer-link">Open Dashboard</a>
+        <a id="open-dashboard-link" href="https://applyrecall.vercel.app" target="_blank" class="footer-link">
+          <span>Dashboard</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        </a>
         <span class="footer-dot">•</span>
-        <a id="open-answers-link" href="https://applyrecall.vercel.app/answers" target="_blank" class="footer-link">Answer Library</a>
+        <a id="open-answers-link" href="https://applyrecall.vercel.app/answers" target="_blank" class="footer-link">
+          <span>Answers</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        </a>
       </div>
-      <div id="user-info-footer" class="user-info text-xs text-muted">ApplyRecall MVP</div>
-      <div class="server-config-section mt-2 text-xs">
-        <details>
-          <summary class="cursor-pointer text-muted font-medium hover:text-primary">⚙️ Environment & Server Settings</summary>
-          <div class="mt-2 space-y-1">
-            <label class="text-xs text-muted">API Server URL:</label>
-            <input type="text" id="api-url-input" class="text-input text-xs" placeholder="https://applyrecall.onrender.com/api" />
-            <label class="text-xs text-muted mt-1">Dashboard URL:</label>
-            <input type="text" id="dashboard-url-input" class="text-input text-xs" placeholder="https://applyrecall.vercel.app" />
-            <div class="button-row mt-2" style="display: flex; gap: 4px;">
-              <button id="save-api-url-btn" class="btn btn-secondary flex-1" style="padding: 4px; font-size: 11px;">Save</button>
-              <button id="reset-prod-url-btn" class="btn btn-ghost" style="padding: 4px; font-size: 11px;">Production</button>
-              <button id="reset-dev-url-btn" class="btn btn-ghost" style="padding: 4px; font-size: 11px;">Local Dev</button>
-            </div>
-          </div>
-        </details>
-      </div>
+      <div id="user-info-footer" class="user-info-text">ApplyRecall MVP</div>
     </footer>
   </div>
 
