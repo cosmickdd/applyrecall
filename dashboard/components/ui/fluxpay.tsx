@@ -264,6 +264,8 @@ export interface FluxPayProps extends Omit< HTMLAttributes< HTMLElement >, 'chil
   primaryAction?: FluxPayLink
   /** Dark secondary button next to the primary one. Omit to hide it. */
   secondaryAction?: FluxPayLink
+  /** Compact Sign In button at the top right next to Sign Up. Omit to hide it. */
+  signIn?: FluxPayLink
   /** Compact button at the top right. Omit to hide it. */
   signUp?: FluxPayLink
   /** Links in the nav tab (desktop) and the dropdown menu (below 1024px). Omit or pass `[]` for no navigation. */
@@ -1016,6 +1018,7 @@ interface NavbarProps {
   navLabel: string
   openMenuLabel: string
   closeMenuLabel: string
+  signIn?: FluxPayLink
   signUp?: FluxPayLink
   menuId: string
   pillId: string
@@ -1034,6 +1037,7 @@ const Navbar = ({
   navLabel,
   openMenuLabel,
   closeMenuLabel,
+  signIn,
   signUp,
   menuId,
   pillId,
@@ -1123,6 +1127,16 @@ const Navbar = ({
         transition={{ duration: 0.6, delay: 0.25, ease: EASE_OUT }}
         className='fxp-header-end'
       >
+        {signIn && (
+          <a
+            href={signIn.href}
+            onClick={signIn.onClick}
+            data-slot='fluxpay-sign-in'
+            className='fxp-btn fxp-btn-secondary'
+          >
+            {signIn.label}
+          </a>
+        )}
         {signUp && (
           <a
             href={signUp.href}
@@ -2700,6 +2714,7 @@ export function FluxPay({
   headingLevel = 1,
   primaryAction,
   secondaryAction,
+  signIn,
   signUp,
   navItems,
   navLabel = 'Primary',
@@ -2827,6 +2842,7 @@ export function FluxPay({
               navLabel={navLabel}
               openMenuLabel={openMenuLabel}
               closeMenuLabel={closeMenuLabel}
+              signIn={signIn}
               signUp={signUp}
               menuId={menuId}
               pillId={pillId}

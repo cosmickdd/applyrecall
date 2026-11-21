@@ -49,7 +49,7 @@ function AuthCallbackContent() {
             await refreshProfile();
             setStatus('success');
             setTimeout(() => {
-              router.push('/');
+              router.push('/overview');
             }, 1500);
             return;
           }
@@ -70,7 +70,7 @@ function AuthCallbackContent() {
           await refreshProfile();
           setStatus('success');
           setTimeout(() => {
-            router.push('/');
+            router.push('/overview');
           }, 1500);
           return;
         }
@@ -84,7 +84,7 @@ function AuthCallbackContent() {
             await refreshProfile();
             setStatus('success');
             setTimeout(() => {
-              router.push('/');
+              router.push('/overview');
             }, 1500);
           }
         });

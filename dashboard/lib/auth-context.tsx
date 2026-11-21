@@ -126,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem('applyrecall_token', data.session.access_token);
       }
       await loadUserProfile();
-      router.push('/');
+      router.push('/overview');
     }
     return {};
   };
@@ -170,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
       await loadUserProfile();
-      router.push('/');
+      router.push('/overview');
     }
     return { user: data.user, session: data.session };
   };
@@ -207,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('applyrecall_token');
     }
-    router.push('/login');
+    router.push('/');
   };
 
   return (

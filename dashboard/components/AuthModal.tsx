@@ -84,7 +84,7 @@ export default function AuthModal({
           setError(res.error)
         } else {
           onClose()
-          router.push('/')
+          router.push('/overview')
         }
       } catch (err: any) {
         setError(err.message || 'Failed to sign in. Please try again.')
@@ -110,7 +110,7 @@ export default function AuthModal({
           // If session is returned directly, navigate to dashboard immediately
           if (res?.session || !isConfigured) {
             onClose()
-            router.push('/')
+            router.push('/overview')
           } else {
             setSuccess(true)
           }
@@ -148,7 +148,7 @@ export default function AuthModal({
       localStorage.setItem('applyrecall_token', '00000000-0000-0000-0000-000000000001')
     }
     onClose()
-    router.push('/')
+    router.push('/overview')
   }
 
   const isEmailNotConfirmed = error?.toLowerCase().includes('email not confirmed')
@@ -158,7 +158,7 @@ export default function AuthModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       onClick={e => {
         if (e.target === e.currentTarget) onClose()
       }}

@@ -20,10 +20,10 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
 const navItems = [
-  { name: 'Overview', href: '/', icon: LayoutDashboard },
+  { name: 'Overview', href: '/overview', icon: LayoutDashboard },
   { name: 'Applications', href: '/applications', icon: Briefcase },
   { name: 'Answer Library', href: '/answers', icon: BookOpen },
-  { name: 'Landing Page', href: '/landing', icon: Sparkles },
+  { name: 'Landing Page', href: '/', icon: Sparkles },
   { name: 'My Profile', href: '/profile', icon: User },
   { name: 'Reminders', href: '/reminders', icon: Bell },
   { name: 'Settings', href: '/settings', icon: Settings },
