@@ -231,6 +231,13 @@ export interface FluxPayFonts {
   mono?: string
 }
 
+export interface FluxPayFeature {
+  icon?: string
+  title: string
+  description: string
+  tag?: string
+}
+
 export interface FluxPayProps extends Omit< HTMLAttributes< HTMLElement >, 'children' > {
   /** Wordmark shown to the right of the logo. Also used for the logo link's accessible name. Omit for no wordmark. */
   brandName?: string
@@ -267,6 +274,8 @@ export interface FluxPayProps extends Omit< HTMLAttributes< HTMLElement >, 'chil
   closeMenuLabel?: string
   /** Figures on the shelf along the bottom. Omit or pass `[]` to hide the shelf. */
   stats?: FluxPayStat[]
+  /** Feature items displayed in the scrolling changing ticker line. */
+  features?: FluxPayFeature[]
   /** Example transfers the card cycles through, in order. Omit or pass `[]` to hide the card. */
   transfers?: FluxPayTransfer[]
   /** Label in the transfer card's header, after a pulsing dot. */
@@ -1341,6 +1350,92 @@ const Party = ({ transfer, side, landed, caption, locale, duration, reduce }: Pa
   )
 }
 
+interface FeatureTickerProps {
+  features: FluxPayFeature[]
+  reduce?: boolean
+}
+
+/**
+ * A sleek changing line that rotates through core platform capabilities and an infinite scrolling marquee line
+ */
+const FeatureTicker = ({ features, reduce }: FeatureTickerProps) => {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    if (reduce || features.length <= 1) return
+    const interval = setInterval(() => {
+      setIndex(prev => (prev + 1) % features.length)
+    }, 3800)
+    return () => clearInterval(interval)
+  }, [features.length, reduce])
+
+  const current = features[index] || features[0]
+  if (!current) return null
+
+  return (
+    <div className='fxp-feature-container'>
+      {/* Dynamic changing feature line */}
+      <div className='fxp-feature-capsule'>
+        <div className='fxp-feature-live'>
+          <span className='fxp-feature-pulse' />
+          <span className='fxp-feature-tag'>{current.tag || 'FEATURE'}</span>
+        </div>
+
+        <div className='fxp-feature-content'>
+          <AnimatePresence mode='wait'>
+            <m.div
+              key={index}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.35, ease: EASE_OUT }}
+              className='fxp-feature-line'
+            >
+              {current.icon && <span className='fxp-feature-icon'>{current.icon}</span>}
+              <span className='fxp-feature-title'>{current.title}</span>
+              <span className='fxp-feature-sep'>—</span>
+              <span className='fxp-feature-desc'>{current.description}</span>
+            </m.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Feature navigation dots */}
+        <div className='fxp-feature-dots'>
+          {features.map((_, i) => (
+            <button
+              key={i}
+              type='button'
+              aria-label={`Show feature ${i + 1}`}
+              onClick={() => setIndex(i)}
+              className={cn('fxp-feature-dot', i === index && 'fxp-feature-dot-active')}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Infinite scrolling line of features */}
+      <div className='fxp-marquee-track'>
+        <div className='fxp-marquee-group'>
+          {features.concat(features).map((feat, i) => (
+            <div key={i} className='fxp-marquee-item'>
+              <span className='fxp-marquee-icon'>{feat.icon}</span>
+              <span className='fxp-marquee-text'>{feat.title}</span>
+            </div>
+          ))}
+        </div>
+        <div className='fxp-marquee-group' aria-hidden='true'>
+          {features.concat(features).map((feat, i) => (
+            <div key={`dup-${i}`} className='fxp-marquee-item'>
+              <span className='fxp-marquee-icon'>{feat.icon}</span>
+              <span className='fxp-marquee-text'>{feat.title}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface TransferCardProps {
   transfers: FluxPayTransfer[]
   title?: string
@@ -2058,6 +2153,201 @@ const BLOCK_CSS = `
     0 10px 28px -14px rgb(80 130 255 / 0.6);
 }
 
+/* ---------- Feature Ticker & Scrolling Line ---------- */
+
+.fxp .fxp-feature-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: clamp(340px, 68vw, 860px);
+  margin-top: clamp(14px, 2.6dvh, 26px);
+  margin-bottom: clamp(12px, 2dvh, 20px);
+  gap: 12px;
+}
+
+.fxp .fxp-feature-capsule {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 50px;
+  padding: 6px 16px 6px 10px;
+  border-radius: 999px;
+  background-color: rgb(8 16 38 / 0.72);
+  border: 1px solid rgb(143 203 255 / 0.22);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.05), 0 12px 32px -8px rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+
+.fxp .fxp-feature-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background-color: rgb(121 189 255 / 0.14);
+  border: 1px solid rgb(143 203 255 / 0.3);
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.fxp .fxp-feature-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: #79bdff;
+  box-shadow: 0 0 8px #79bdff;
+  animation: fxp-pulse 2s infinite;
+}
+
+.fxp .fxp-feature-tag {
+  color: #cfe6ff;
+  font-family: var(--fxp-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fxp .fxp-feature-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.fxp .fxp-feature-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  font-size: clamp(12.5px, 0.45rem + 0.45vw, 14px);
+  color: #ffffff;
+}
+
+.fxp .fxp-feature-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.fxp .fxp-feature-title {
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.fxp .fxp-feature-sep {
+  color: rgb(143 203 255 / 0.4);
+  font-size: 12px;
+}
+
+.fxp .fxp-feature-desc {
+  color: rgb(214 236 255 / 0.78);
+  font-weight: 450;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fxp .fxp-feature-dots {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  .fxp .fxp-feature-dots { display: flex; }
+}
+
+.fxp .fxp-feature-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: rgb(255 255 255 / 0.25);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: all 200ms ease-out;
+}
+
+.fxp .fxp-feature-dot:hover {
+  background-color: rgb(255 255 255 / 0.6);
+}
+
+.fxp .fxp-feature-dot-active {
+  width: 16px;
+  background-color: #8fcbff;
+  box-shadow: 0 0 6px rgb(143 203 255 / 0.7);
+}
+
+/* Continuous scrolling marquee track */
+.fxp .fxp-marquee-track {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  user-select: none;
+  gap: 12px;
+  mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+}
+
+.fxp .fxp-marquee-group {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 12px;
+  min-width: 100%;
+  animation: fxp-marquee 30s linear infinite;
+}
+
+.fxp .fxp-marquee-track:hover .fxp-marquee-group {
+  animation-play-state: paused;
+}
+
+.fxp .fxp-marquee-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background-color: rgb(255 255 255 / 0.05);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  color: rgb(214 236 255 / 0.85);
+  font-family: var(--fxp-font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.fxp .fxp-marquee-item:hover {
+  background-color: rgb(255 255 255 / 0.12);
+  border-color: rgb(143 203 255 / 0.4);
+  color: #ffffff;
+}
+
+.fxp .fxp-marquee-icon {
+  font-size: 13px;
+}
+
+@keyframes fxp-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - 12px)); }
+}
+
+@keyframes fxp-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
 /* ---------- Live transfer card ---------- */
 
 /* Between the headline and the buttons, as wide as the nav tab and the stats shelf so the three line up down the
@@ -2394,6 +2684,7 @@ export function FluxPay({
   closeMenuLabel = 'Close menu',
   navStyle = 'menu',
   stats,
+  features,
   transfers,
   transferTitle,
   transferLabel,
@@ -2551,7 +2842,9 @@ export function FluxPay({
                   </Heading>
                 )}
 
-                {examples.length > 0 && (
+                {features && features.length > 0 ? (
+                  <FeatureTicker features={features} reduce={reduce} />
+                ) : examples.length > 0 ? (
                   <TransferCard
                     transfers={examples}
                     title={transferTitle}
@@ -2563,7 +2856,7 @@ export function FluxPay({
                     timing={timing}
                     reduce={reduce}
                   />
-                )}
+                ) : null}
 
                 {hasActions && (
                   <m.div {...rise(0.86)} className='fxp-actions-row'>

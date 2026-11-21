@@ -3,7 +3,7 @@
 import { useId } from 'react'
 import type { SVGProps } from 'react'
 import FluxPay from '@/components/ui/fluxpay'
-import type { FluxPayNavItem, FluxPayStat, FluxPayTransfer } from '@/components/ui/fluxpay'
+import type { FluxPayFeature, FluxPayNavItem, FluxPayStat } from '@/components/ui/fluxpay'
 
 const FONTS_URL =
   'https://fonts.googleapis.com/css2?family=Geist+Mono:wght@500&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400..700&display=swap'
@@ -22,74 +22,42 @@ const STATS: FluxPayStat[] = [
   { value: 99.99, decimals: 2, suffix: '%', label: 'uptime & bank-grade security' }
 ]
 
-const APPLICATION_TRANSFERS: FluxPayTransfer[] = [
+const FEATURES: FluxPayFeature[] = [
   {
-    route: 'LinkedIn → Greenhouse ATS',
-    from: {
-      code: 'ATS JOB FORM',
-      symbol: '💼',
-      title: 'Michelin · UX Researcher',
-      subtitle: '14 Application Fields Detected'
-    },
-    actionText: '⚡ Autofilling Profile & Approved Answers...',
-    to: {
-      code: 'APPLICATION MEMORY',
-      symbol: '✓',
-      title: '14 / 14 Fields Autofilled',
-      subtitle: 'Saved ~15 mins of typing'
-    },
-    settled: 'Ready to submit in 0.9s'
+    icon: '⚡',
+    tag: 'ATS AUTOFILL',
+    title: 'Instant ATS Auto-Fill',
+    description: 'Auto-detects & fills Workday, Greenhouse & Lever job forms in < 1.5s'
   },
   {
-    route: 'Handshake → Lever ATS',
-    from: {
-      code: 'ESSAY QUESTIONS',
-      symbol: '🎯',
-      title: 'Stripe · Software Engineer',
-      subtitle: '"Why do you want to join our team?"'
-    },
-    actionText: '📚 Matching Approved Answer Library...',
-    to: {
-      code: 'APPROVED ANSWERS',
-      symbol: '✨',
-      title: 'Tailored Responses Recalled',
-      subtitle: '100% past approved answers'
-    },
-    settled: 'Recalled in 0.8s'
+    icon: '🎯',
+    tag: 'ANSWER MEMORY',
+    title: 'Approved Answer Library',
+    description: 'Recalls exact past responses for behavioral & technical essays'
   },
   {
-    route: 'Career Portal → ApplyRecall Memory',
-    from: {
-      code: 'JOB SUBMITTED',
-      symbol: '🚀',
-      title: 'Google · Solutions Specialist',
-      subtitle: 'Application Status: Applied'
-    },
-    actionText: '🔔 Setting 7-Day Follow-up Radar...',
-    to: {
-      code: 'FOLLOW-UP QUEUE',
-      symbol: '📅',
-      title: 'Follow-up Due: Nov 28',
-      subtitle: 'AI Follow-up email draft ready'
-    },
-    settled: 'Reminder scheduled in memory'
+    icon: '📱',
+    tag: 'TELEGRAM RADAR',
+    title: 'Autonomous Mobile Copilot',
+    description: 'Delivers daily morning digests, recruiter alerts & instant mobile actions'
   },
   {
-    route: 'Recruiter Update → Mobile Assistant',
-    from: {
-      code: 'INTERVIEW INVITATION',
-      symbol: '✉️',
-      title: 'Microsoft · Tech Loop',
-      subtitle: 'Technical interview next week'
-    },
-    actionText: '📱 Delivering Push Alert...',
-    to: {
-      code: 'TELEGRAM BOT',
-      symbol: '🔔',
-      title: 'Mobile Push Alert Sent',
-      subtitle: 'Manage & reply on the go'
-    },
-    settled: 'Alert delivered in 0.3s'
+    icon: '⏱️',
+    tag: 'SMART RADAR',
+    title: '7-Day Follow-Up Radar',
+    description: 'Automatically drafts recruiter check-in emails when application replies stall'
+  },
+  {
+    icon: '🛡️',
+    tag: '100% PRIVATE',
+    title: 'Zero-Knowledge Encrypted Memory',
+    description: 'Your career credentials remain locally encrypted on your device'
+  },
+  {
+    icon: '📊',
+    tag: 'LIVE PIPELINE',
+    title: 'Real-Time Application Kanban',
+    description: 'Organizes every applied role across Saved, Applied, Interview & Offer'
   }
 ]
 
@@ -127,12 +95,7 @@ export default function LandingPage() {
         primaryAction={{ label: 'Get Started Free', href: '/signup' }}
         secondaryAction={{ label: 'Open Dashboard', href: '/login' }}
         stats={STATS}
-        transfers={APPLICATION_TRANSFERS}
-        transferTitle="Live Application Pipeline"
-        transferLabel="Real-time job application memory, answer recall, and automated follow-ups"
-        transferSteps={['Form Detected', 'Answers Recalled', 'Follow-up Queued'] as const}
-        sendLabel="Target Application"
-        receiveLabel="Automated Memory"
+        features={FEATURES}
         fonts={{
           sans: "'Inter Tight', var(--font-sans, ui-sans-serif, system-ui, sans-serif)",
           serif: "'Instrument Serif', var(--font-serif, ui-serif, Georgia, serif)",
