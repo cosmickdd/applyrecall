@@ -33,22 +33,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const isGlassyPage = pathname === '/glassy';
-
   return (
     <div className="flex min-h-screen w-full">
-      {!isGlassyPage && <Sidebar />}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden relative">
-        {isGlassyPage && (
-          <div className="fixed top-3 left-4 z-50">
-            <a
-              href="/"
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 hover:bg-black/85 text-white/90 text-xs font-semibold backdrop-blur-md shadow-lg transition-all border border-white/20"
-            >
-              ← Back to Overview
-            </a>
-          </div>
-        )}
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
         {children}
       </div>
     </div>
