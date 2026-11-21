@@ -912,15 +912,31 @@ const PixelField = ({ areaRef, config, reduce }: PixelFieldProps) => {
  * Shoulder shape for the nav tab and the stats shelf
  * ---------------------------------------------------------------------------------------------------------------- */
 
+interface ShoulderProps extends SVGProps< SVGSVGElement > {
+  flipX?: boolean
+  flipY?: boolean
+}
+
 /**
  * One side of the nav tab and the stats shelf on a 50 × 100 box: a rounded inner corner, a side slanting 14° and a
  * rounded outer corner on the tab's floor. Both corners are circular arcs, so keep the 1 : 2 ratio when sizing it or
  * they squash; the caller mirrors it for the other sides, and the currentColor fill matches the page
  */
-const Shoulder = (props: SVGProps< SVGSVGElement >) => {
+const Shoulder = ({ flipX, flipY, ...props }: ShoulderProps) => {
+  let transform = ''
+  if (flipX && flipY) {
+    transform = 'scale(-1, -1) translate(-50, -100)'
+  } else if (flipX) {
+    transform = 'scale(-1, 1) translate(-50, 0)'
+  } else if (flipY) {
+    transform = 'scale(1, -1) translate(0, -100)'
+  }
+
   return (
     <svg viewBox='0 0 50 100' preserveAspectRatio='none' fill='currentColor' aria-hidden='true' focusable='false' {...props}>
-      <path d='M0 0A16 16 0 0 1 15.52 12.13L34.48 87.87A16 16 0 0 0 50 100V0Z' />
+      <g transform={transform || undefined}>
+        <path d='M0 0A16 16 0 0 1 15.52 12.13L34.48 87.87A16 16 0 0 0 50 100V0Z' />
+      </g>
     </svg>
   )
 }
@@ -1085,7 +1101,7 @@ const Navbar = ({
           <div className='fxp-tab-body'>
             <NavLinks items={navItems} pillId={pillId} />
           </div>
-          <Shoulder className='fxp-tab-shoulder fxp-flip-x' />
+          <Shoulder flipX className='fxp-tab-shoulder' />
         </m.nav>
       )}
 
@@ -1554,7 +1570,7 @@ const StatsShelf = ({ stats, count, reduce }: StatsShelfProps) => {
       transition={{ duration: 0.85, delay: 0.5, ease: EASE_OUT }}
       className='fxp-shelf'
     >
-      <Shoulder className='fxp-shelf-shoulder fxp-flip-y' />
+      <Shoulder flipY className='fxp-shelf-shoulder' />
       <dl className='fxp-shelf-body'>
         {stats.map((stat, index) => (
           <div key={`${stat.label}-${index}`} className='fxp-stat'>
@@ -1568,7 +1584,7 @@ const StatsShelf = ({ stats, count, reduce }: StatsShelfProps) => {
           </div>
         ))}
       </dl>
-      <Shoulder className='fxp-shelf-shoulder fxp-flip-xy' />
+      <Shoulder flipX flipY className='fxp-shelf-shoulder' />
     </m.div>
   )
 }
@@ -1585,7 +1601,7 @@ const BLOCK_CSS = `
   --fxp-radius: clamp(8px, 0.97vw, 15px);
   --fxp-tab-h: clamp(60px, 4.9vw, 80px);
   --fxp-shoulder: calc(var(--fxp-tab-h) * 0.5);
-  --fxp-tab-w: clamp(520px, 39vw, 660px);
+  --fxp-tab-w: clamp(540px, 46vw, 760px);
   --fxp-head-h: 76px;
   --fxp-shelf-h: clamp(84px, 11dvh, 100px);
   --fxp-font-sans: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
@@ -1634,9 +1650,6 @@ const BLOCK_CSS = `
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
   clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
-.fxp .fxp-flip-x { transform: scaleX(-1); scale: -1 1; }
-.fxp .fxp-flip-y { transform: scaleY(-1); scale: 1 -1; }
-.fxp .fxp-flip-xy { transform: scale(-1, -1); scale: -1 -1; }
 
 /* Visible focus on every control: dark ink on the pale surfaces, sky blue on the navy panel */
 .fxp :is(a, button):focus-visible { outline: 2px solid #7cc4ff; outline-offset: 3px; }
