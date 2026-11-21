@@ -1,10 +1,11 @@
 'use client'
 
-import { useId } from 'react'
-import type { SVGProps } from 'react'
+import { useState, useId } from 'react'
+import type { SVGProps, MouseEvent } from 'react'
 import { Zap, BookmarkCheck, Send, Clock, ShieldCheck, Layers } from 'lucide-react'
 import FluxPay from '@/components/ui/fluxpay'
 import type { FluxPayFeature, FluxPayNavItem, FluxPayStat } from '@/components/ui/fluxpay'
+import AuthModal from '@/components/AuthModal'
 
 const FONTS_URL =
   'https://fonts.googleapis.com/css2?family=Geist+Mono:wght@500&family=Instrument+Serif:ital@1&family=Inter+Tight:wght@400..700&display=swap'
@@ -96,6 +97,30 @@ function ApplyRecallLogoMark(props: SVGProps<SVGSVGElement>) {
 }
 
 export default function LandingPage() {
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup')
+
+  const openSignUp = (e?: MouseEvent<HTMLAnchorElement>) => {
+    if (e) e.preventDefault()
+    setAuthMode('signup')
+    setAuthModalOpen(true)
+  }
+
+  const openSignIn = (e?: MouseEvent<HTMLAnchorElement>) => {
+    if (e) e.preventDefault()
+    setAuthMode('signin')
+    setAuthModalOpen(true)
+  }
+
+  const navItems: FluxPayNavItem[] = [
+    { label: 'Overview', href: '#overview', active: true },
+    { label: 'Answer Library', href: '#answers' },
+    { label: 'Extension', href: '#extension' },
+    { label: 'Telegram Bot', href: '#telegram' },
+    { label: 'Sign In', href: '/login', onClick: openSignIn },
+    { label: 'Dashboard', href: '/', onClick: openSignIn }
+  ]
+
   return (
     <div className="w-full min-h-screen bg-[#000000]">
       <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -107,11 +132,11 @@ export default function LandingPage() {
         badge="Personal Application Memory & Autonomous Job Copilot"
         titleLines={['Apply Once, *Remember Everything*,', 'Built For *Every Job You Chase*']}
         titleLinesPhone={['Apply Once,', '*Remember Everything*,', 'Built For *What’s Next*']}
-        navItems={NAV}
+        navItems={navItems}
         navStyle="menu"
-        signUp={{ label: 'Sign Up', href: '/signup' }}
-        primaryAction={{ label: 'Get Started Free', href: '/signup' }}
-        secondaryAction={{ label: 'Open Dashboard', href: '/login' }}
+        signUp={{ label: 'Sign Up', href: '/signup', onClick: openSignUp }}
+        primaryAction={{ label: 'Get Started Free', href: '/signup', onClick: openSignUp }}
+        secondaryAction={{ label: 'Open Dashboard', href: '/login', onClick: openSignIn }}
         stats={STATS}
         features={FEATURES}
         fonts={{
@@ -135,6 +160,13 @@ export default function LandingPage() {
         field={{ columns: 74 }}
         ripple={{ every: 3 }}
         cursor={{ radius: 170 }}
+      />
+
+      {/* In-place Auth Modal for seamless Sign In / Sign Up */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode={authMode}
       />
     </div>
   )

@@ -23,7 +23,7 @@
 
 // React Imports
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { CSSProperties, HTMLAttributes, ReactNode, RefObject, SVGProps } from 'react'
+import type { CSSProperties, HTMLAttributes, MouseEvent, ReactNode, RefObject, SVGProps } from 'react'
 
 // Third-party Imports
 import { AnimatePresence, LazyMotion, MotionConfig, animate, domMax, m, useInView } from 'motion/react'
@@ -41,6 +41,8 @@ export interface FluxPayLink {
   label: string
   /** Link target. */
   href: string
+  /** Optional click handler (e.g. for modals). */
+  onClick?: (e: MouseEvent< HTMLAnchorElement >) => void
 }
 
 /** One link in the nav tab (desktop) and the dropdown menu (phones and tablets). */
@@ -988,6 +990,7 @@ const NavLinks = ({ items, pillId }: NavLinksProps) => {
           )}
           <a
             href={item.href}
+            onClick={item.onClick}
             data-slot='fluxpay-nav-link'
             aria-current={item.active ? 'page' : undefined}
             data-lit={target === item.label ? '' : undefined}
@@ -1121,7 +1124,12 @@ const Navbar = ({
         className='fxp-header-end'
       >
         {signUp && (
-          <a href={signUp.href} data-slot='fluxpay-sign-up' className='fxp-btn fxp-btn-primary'>
+          <a
+            href={signUp.href}
+            onClick={signUp.onClick}
+            data-slot='fluxpay-sign-up'
+            className='fxp-btn fxp-btn-primary'
+          >
             {signUp.label}
           </a>
         )}
@@ -1179,7 +1187,10 @@ const Navbar = ({
                   <a
                     href={item.href}
                     aria-current={item.active ? 'page' : undefined}
-                    onClick={() => setOpen(false)}
+                    onClick={e => {
+                      if (item.onClick) item.onClick(e)
+                      setOpen(false)
+                    }}
                     className='fxp-menu-link'
                   >
                     {item.label}
@@ -2874,12 +2885,22 @@ export function FluxPay({
                   <m.div {...rise(0.86)} className='fxp-actions-row'>
                     <div className='fxp-actions'>
                       {primaryAction && (
-                        <a href={primaryAction.href} data-slot='fluxpay-primary' className='fxp-btn fxp-btn-primary'>
+                        <a
+                          href={primaryAction.href}
+                          onClick={primaryAction.onClick}
+                          data-slot='fluxpay-primary'
+                          className='fxp-btn fxp-btn-primary'
+                        >
                           {primaryAction.label}
                         </a>
                       )}
                       {secondaryAction && (
-                        <a href={secondaryAction.href} data-slot='fluxpay-secondary' className='fxp-btn fxp-btn-secondary'>
+                        <a
+                          href={secondaryAction.href}
+                          onClick={secondaryAction.onClick}
+                          data-slot='fluxpay-secondary'
+                          className='fxp-btn fxp-btn-secondary'
+                        >
                           {secondaryAction.label}
                         </a>
                       )}
