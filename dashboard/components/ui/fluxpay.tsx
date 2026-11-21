@@ -63,32 +63,35 @@ export interface FluxPayStat {
   label: string
 }
 
-/** One example transfer the live-transfer card cycles through. The received amount is `from.amount × rate`. */
+export interface FluxPayParty {
+  /** Short category or code, for example `USD` or `JOB`. */
+  code: string
+  /** Currency symbol or icon shown in the coin. */
+  symbol: string
+  /** Optional custom title or human readable name, for example `Michelin · UX Researcher`. */
+  title?: string
+  /** Optional subtitle, for example `14 Form Fields Detected`. */
+  subtitle?: string
+  /** Optional override for the code header, for example `TARGET APPLICATION`. */
+  codeLabel?: string
+  /** Amount sent, in major units. */
+  amount?: number
+  /** Digits after the decimal point. Defaults to 2. */
+  decimals?: number
+}
+
+/** One example transfer or application event the live-transfer card cycles through. */
 export interface FluxPayTransfer {
-  /** Route text in the card header, for example `New York → Berlin`. */
+  /** Route text in the card header, for example `LinkedIn → Greenhouse`. */
   route: string
   /** The sending side. */
-  from: {
-    /** ISO-style currency code, for example `USD`. */
-    code: string
-    /** Currency symbol shown in the coin and before the amount. */
-    symbol: string
-    /** Amount sent, in major units. */
-    amount: number
-    /** Digits after the decimal point. Defaults to 2. */
-    decimals?: number
-  }
+  from: FluxPayParty
   /** The receiving side. */
-  to: {
-    /** ISO-style currency code, for example `EUR`. */
-    code: string
-    /** Currency symbol shown in the coin and before the amount. */
-    symbol: string
-    /** Digits after the decimal point. Defaults to 2. */
-    decimals?: number
-  }
-  /** Units of `to` received per one unit of `from`. */
-  rate: number
+  to: FluxPayParty
+  /** Units of `to` received per one unit of `from`, or conversion factor. */
+  rate?: number
+  /** Custom action badge in the middle, for example `Matching Past Approved Answers...`. */
+  actionText?: string
   /** Text shown once the transfer lands, for example `Settled in 1.2s`. Omit to show nothing. */
   settled?: string
 }
@@ -1229,7 +1232,9 @@ const Received = ({ transfer, landed, locale, duration, reduce }: ReceivedProps)
 
   // Vars
   const decimals = transfer.to.decimals ?? 2
-  const total = transfer.from.amount * transfer.rate
+  const amount = transfer.from.amount ?? 0
+  const rate = transfer.rate ?? 1
+  const total = amount * rate
 
   useEffect(() => {
     const node = ref.current
@@ -1273,20 +1278,34 @@ interface PartyProps {
 
 const Party = ({ transfer, side, landed, caption, locale, duration, reduce }: PartyProps) => {
   // Vars
-  const { code, symbol } = transfer[side]
+  const party = transfer[side]
+  const { code, symbol } = party
 
   return (
     <div className={cn('fxp-tx-party', side === 'to' && 'fxp-tx-party-to')}>
       <span className={cn('fxp-tx-coin', side === 'to' && landed && 'fxp-tx-coin-on')}>{symbol}</span>
       <span className='fxp-tx-meta'>
-        <span className='fxp-tx-code'>{`${caption} · ${code}`}</span>
-        {side === 'from' ? (
-          <span className='fxp-tx-amount'>
-            {symbol}
-            {formatMoney(locale, transfer.from.amount, transfer.from.decimals ?? 2)}
-          </span>
+        <span className='fxp-tx-code'>{party.codeLabel ?? `${caption} · ${code}`}</span>
+        {party.title ? (
+          <>
+            <span className={cn('fxp-tx-amount', side === 'to' && !landed && 'fxp-tx-amount-pending')}>
+              {party.title}
+            </span>
+            {party.subtitle && (
+              <span className='fxp-tx-subtitle' style={{ fontSize: '11px', color: 'rgb(214 236 255 / 0.72)', marginTop: '2px', whiteSpace: 'nowrap' }}>
+                {party.subtitle}
+              </span>
+            )}
+          </>
         ) : (
-          <Received transfer={transfer} landed={landed} locale={locale} duration={duration} reduce={reduce} />
+          side === 'from' ? (
+            <span className='fxp-tx-amount'>
+              {symbol}
+              {formatMoney(locale, party.amount ?? 0, party.decimals ?? 2)}
+            </span>
+          ) : (
+            <Received transfer={transfer} landed={landed} locale={locale} duration={duration} reduce={reduce} />
+          )
         )}
       </span>
     </div>
@@ -1403,7 +1422,7 @@ const TransferCard = ({
 
             <div className='fxp-tx-track'>
               <span className={cn('fxp-tx-rate', shown > 0 && 'fxp-tx-rate-on')}>
-                1 {transfer.from.code} = {rateText(transfer.rate)} {transfer.to.code}
+                {transfer.actionText ?? `1 ${transfer.from.code} = ${rateText(transfer.rate ?? 1)} ${transfer.to.code}`}
               </span>
               <span className='fxp-tx-line'>
                 <span className='fxp-tx-run'>

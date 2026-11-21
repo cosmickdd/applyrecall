@@ -24,32 +24,72 @@ const STATS: FluxPayStat[] = [
 
 const APPLICATION_TRANSFERS: FluxPayTransfer[] = [
   {
-    route: 'LinkedIn → Greenhouse',
-    from: { code: 'JOB', symbol: '💼', amount: 1 },
-    to: { code: 'FIELDS', symbol: '⚡' },
-    rate: 14,
-    settled: 'Autofilled 14 fields in 0.9s'
+    route: 'LinkedIn → Greenhouse ATS',
+    from: {
+      code: 'ATS JOB FORM',
+      symbol: '💼',
+      title: 'Michelin · UX Researcher',
+      subtitle: '14 Application Fields Detected'
+    },
+    actionText: '⚡ Autofilling Profile & Approved Answers...',
+    to: {
+      code: 'APPLICATION MEMORY',
+      symbol: '✓',
+      title: '14 / 14 Fields Autofilled',
+      subtitle: 'Saved ~15 mins of typing'
+    },
+    settled: 'Ready to submit in 0.9s'
   },
   {
-    route: 'Handshake → Lever',
-    from: { code: 'ROLE', symbol: '🎯', amount: 1 },
-    to: { code: 'ANSW', symbol: '📚' },
-    rate: 8,
-    settled: 'Recalled 8 past answers in 0.8s'
+    route: 'Handshake → Lever ATS',
+    from: {
+      code: 'ESSAY QUESTIONS',
+      symbol: '🎯',
+      title: 'Stripe · Software Engineer',
+      subtitle: '"Why do you want to join our team?"'
+    },
+    actionText: '📚 Matching Approved Answer Library...',
+    to: {
+      code: 'APPROVED ANSWERS',
+      symbol: '✨',
+      title: 'Tailored Responses Recalled',
+      subtitle: '100% past approved answers'
+    },
+    settled: 'Recalled in 0.8s'
   },
   {
-    route: 'Job Portal → ApplyRecall',
-    from: { code: 'SUBMIT', symbol: '🚀', amount: 1 },
-    to: { code: 'RADAR', symbol: '🔔' },
-    rate: 7,
-    settled: 'Follow-up queued for 7 days'
+    route: 'Career Portal → ApplyRecall Memory',
+    from: {
+      code: 'JOB SUBMITTED',
+      symbol: '🚀',
+      title: 'Google · Solutions Specialist',
+      subtitle: 'Application Status: Applied'
+    },
+    actionText: '🔔 Setting 7-Day Follow-up Radar...',
+    to: {
+      code: 'FOLLOW-UP QUEUE',
+      symbol: '📅',
+      title: 'Follow-up Due: Nov 28',
+      subtitle: 'AI Follow-up email draft ready'
+    },
+    settled: 'Reminder scheduled in memory'
   },
   {
-    route: 'Company Mail → Telegram Bot',
-    from: { code: 'ALERT', symbol: '✉️', amount: 1 },
-    to: { code: 'PUSH', symbol: '📱' },
-    rate: 1,
-    settled: 'Instant mobile alert in 0.3s'
+    route: 'Recruiter Update → Mobile Assistant',
+    from: {
+      code: 'INTERVIEW INVITATION',
+      symbol: '✉️',
+      title: 'Microsoft · Tech Loop',
+      subtitle: 'Technical interview next week'
+    },
+    actionText: '📱 Delivering Push Alert...',
+    to: {
+      code: 'TELEGRAM BOT',
+      symbol: '🔔',
+      title: 'Mobile Push Alert Sent',
+      subtitle: 'Manage & reply on the go'
+    },
+    settled: 'Alert delivered in 0.3s'
   }
 ]
 
@@ -89,9 +129,9 @@ export default function LandingPage() {
         transfers={APPLICATION_TRANSFERS}
         transferTitle="Live Application Pipeline"
         transferLabel="Real-time job application memory, answer recall, and automated follow-ups"
-        transferSteps={['Captured', 'Autofilled', 'Remembered'] as const}
-        sendLabel="Source"
-        receiveLabel="Recalled"
+        transferSteps={['Form Detected', 'Answers Recalled', 'Follow-up Queued'] as const}
+        sendLabel="Target Application"
+        receiveLabel="Automated Memory"
         fonts={{
           sans: "'Inter Tight', var(--font-sans, ui-sans-serif, system-ui, sans-serif)",
           serif: "'Instrument Serif', var(--font-serif, ui-serif, Georgia, serif)",
