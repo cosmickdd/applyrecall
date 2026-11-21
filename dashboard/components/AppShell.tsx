@@ -11,16 +11,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { token, loading, isConfigured } = useAuth();
 
   const isAuthOrLanding = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/landing' || pathname?.startsWith('/auth/');
-  const isExtensionPage = pathname === '/extension';
-  const isPublicPage = isAuthOrLanding || isExtensionPage;
+  const isPublicPage = isAuthOrLanding;
 
   useEffect(() => {
     if (!loading && isConfigured && !token && !isPublicPage) {
-      router.push('/');
+      if (pathname === '/extension') {
+        router.push('/?auth=signin&redirect=/extension');
+      } else {
+        router.push('/');
+      }
     }
-  }, [loading, isConfigured, token, isPublicPage, router]);
+  }, [loading, isConfigured, token, isPublicPage, pathname, router]);
 
-  if (isAuthOrLanding || (isExtensionPage && !token)) {
+  if (isAuthOrLanding) {
     return <main className="min-h-screen">{children}</main>;
   }
 
@@ -36,9 +39,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex min-h-screen w-full bg-brand-soft">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden bg-brand-soft">
         {children}
       </div>
     </div>

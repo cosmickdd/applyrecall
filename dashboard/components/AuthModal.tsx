@@ -14,19 +14,24 @@ import {
   CheckCircle2,
   Loader2,
   ArrowRight,
-  RotateCw
+  RotateCw,
+  Sparkles
 } from 'lucide-react'
 
 export interface AuthModalProps {
   isOpen: boolean
   onClose: () => void
   initialMode?: 'signin' | 'signup'
+  redirectTo?: string
+  subtitleNote?: string
 }
 
 export default function AuthModal({
   isOpen,
   onClose,
-  initialMode = 'signup'
+  initialMode = 'signup',
+  redirectTo,
+  subtitleNote
 }: AuthModalProps) {
   const router = useRouter()
   const { signIn, signUp, resendConfirmationEmail, isConfigured } = useAuth()
@@ -83,7 +88,7 @@ export default function AuthModal({
           setError(res.error)
         } else {
           onClose()
-          router.push('/overview')
+          router.push(redirectTo || '/overview')
         }
       } catch (err: any) {
         setError(err.message || 'Failed to sign in. Please try again.')
@@ -109,7 +114,7 @@ export default function AuthModal({
           // If session is returned directly, navigate to dashboard immediately
           if (res?.session || !isConfigured) {
             onClose()
-            router.push('/overview')
+            router.push(redirectTo || '/overview')
           } else {
             setSuccess(true)
           }
@@ -191,6 +196,14 @@ export default function AuthModal({
             Apply once. Remember everything. Stay in control.
           </p>
         </div>
+
+        {/* Optional Context Note (e.g. extension download requirement) */}
+        {subtitleNote && (
+          <div className="p-3 rounded-xl bg-blue-500/15 border border-blue-400/30 text-sky-200 text-xs flex items-center gap-2.5">
+            <Sparkles className="w-4 h-4 text-[#79bdff] flex-shrink-0" />
+            <span className="leading-snug">{subtitleNote}</span>
+          </div>
+        )}
 
         {/* Mode Toggle Pills */}
         <div className="grid grid-cols-2 p-1 rounded-xl bg-black/40 border border-white/10 text-xs font-semibold">

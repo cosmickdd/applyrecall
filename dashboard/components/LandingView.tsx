@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useId } from 'react'
+import { useState, useId, useEffect } from 'react'
 import type { SVGProps, MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Zap, BookmarkCheck, Send, Clock, ShieldCheck, Layers } from 'lucide-react'
@@ -92,31 +92,67 @@ function ApplyRecallLogoMark(props: SVGProps<SVGSVGElement>) {
 export interface LandingViewProps {
   initialModalOpen?: boolean
   initialModalMode?: 'signin' | 'signup'
+  initialRedirect?: string
 }
 
 export default function LandingView({
   initialModalOpen = false,
-  initialModalMode = 'signup'
+  initialModalMode = 'signup',
+  initialRedirect
 }: LandingViewProps) {
   const router = useRouter()
   const [authModalOpen, setAuthModalOpen] = useState(initialModalOpen)
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>(initialModalMode)
+  const [redirectTo, setRedirectTo] = useState<string | undefined>(initialRedirect)
+  const [modalSubtitleNote, setModalSubtitleNote] = useState<string | undefined>(undefined)
+
+  // Listen to search params for direct redirects like /?auth=signin&redirect=/extension
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search)
+      const auth = searchParams.get('auth')
+      const redirect = searchParams.get('redirect')
+
+      if (auth === 'signin' || redirect === '/extension') {
+        setAuthMode('signin')
+        setRedirectTo(redirect || '/extension')
+        setModalSubtitleNote('Sign in to your account to download the ApplyRecall Chrome Extension.')
+        setAuthModalOpen(true)
+      } else if (auth === 'signup') {
+        setAuthMode('signup')
+        setRedirectTo(redirect || undefined)
+        setAuthModalOpen(true)
+      }
+    }
+  }, [])
 
   const openSignUp = (e?: MouseEvent<HTMLAnchorElement>) => {
     if (e) e.preventDefault()
     setAuthMode('signup')
+    setRedirectTo(undefined)
+    setModalSubtitleNote(undefined)
     setAuthModalOpen(true)
   }
 
   const openSignIn = (e?: MouseEvent<HTMLAnchorElement>) => {
     if (e) e.preventDefault()
     setAuthMode('signin')
+    setRedirectTo(undefined)
+    setModalSubtitleNote(undefined)
+    setAuthModalOpen(true)
+  }
+
+  const openExtensionAuth = (e?: MouseEvent<HTMLAnchorElement>) => {
+    if (e) e.preventDefault()
+    setAuthMode('signin')
+    setRedirectTo('/extension')
+    setModalSubtitleNote('Sign in to your account to download the ApplyRecall Chrome Extension.')
     setAuthModalOpen(true)
   }
 
   const handleCloseModal = () => {
     setAuthModalOpen(false)
-    if (typeof window !== 'undefined' && (window.location.pathname === '/login' || window.location.pathname === '/signup')) {
+    if (typeof window !== 'undefined' && (window.location.pathname === '/login' || window.location.pathname === '/signup' || window.location.search.includes('auth='))) {
       window.history.pushState(null, '', '/')
     }
   }
@@ -125,7 +161,7 @@ export default function LandingView({
     { label: 'Overview', href: '#overview', active: true },
     { label: 'Features', href: '#features' },
     { label: 'Answer Library', href: '#answers' },
-    { label: 'Download Extension', href: '/extension' },
+    { label: 'Download Extension', href: '#extension', onClick: openExtensionAuth },
     { label: 'Telegram Bot', href: '#telegram' },
     { label: 'Sign In', href: '#signin', onClick: openSignIn },
     { label: 'Sign Up', href: '#signup', onClick: openSignUp },
@@ -148,7 +184,7 @@ export default function LandingView({
         signIn={{ label: 'Sign In', href: '#signin', onClick: openSignIn }}
         signUp={{ label: 'Sign Up', href: '#signup', onClick: openSignUp }}
         primaryAction={{ label: 'Get Started Free', href: '#signup', onClick: openSignUp }}
-        secondaryAction={{ label: 'Download Extension', href: '/extension' }}
+        secondaryAction={{ label: 'Download Extension', href: '#extension', onClick: openExtensionAuth }}
         stats={STATS}
         features={FEATURES}
         fonts={{
@@ -179,6 +215,8 @@ export default function LandingView({
         isOpen={authModalOpen}
         onClose={handleCloseModal}
         initialMode={authMode}
+        redirectTo={redirectTo}
+        subtitleNote={modalSubtitleNote}
       />
     </div>
   )
