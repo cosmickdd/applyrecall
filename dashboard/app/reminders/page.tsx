@@ -69,11 +69,15 @@ export default function RemindersPage() {
   const handleTriggerWorker = async () => {
     try {
       const res = await api.checkRemindersNow();
-      setWorkerMessage(`Worker run complete: ${res.processed} reminders evaluated.`);
+      if (res && res.processed > 0) {
+        setWorkerMessage(`${res.processed} follow-up reminder${res.processed > 1 ? 's' : ''} updated!`);
+      } else {
+        setWorkerMessage('All reminders are up to date.');
+      }
       setTimeout(() => setWorkerMessage(null), 3000);
       loadReminders();
     } catch (e) {
-      setWorkerMessage('Worker execution failed.');
+      setWorkerMessage('Could not sync reminders. Please try again.');
     }
   };
 
@@ -87,7 +91,7 @@ export default function RemindersPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-ink-primary">Reminders</h1>
             <p className="text-sm text-ink-secondary mt-1">
-              Database-backed reminder scheduling powered by Python worker.
+              Automated 7-day follow-up radar to keep you on recruiter shortlists.
             </p>
           </div>
           <button
@@ -95,7 +99,7 @@ export default function RemindersPage() {
             className="flex items-center gap-2 px-3.5 py-2 bg-brand-surface text-ink-primary border border-edge-default rounded-btn text-xs font-semibold hover:bg-brand-subtle transition-colors shadow-subtle shrink-0"
           >
             <RefreshCw className="w-3.5 h-3.5 text-brand-blue" />
-            <span>Process Reminders Now</span>
+            <span>Check Due Follow-ups</span>
           </button>
         </div>
 

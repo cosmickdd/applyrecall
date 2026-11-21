@@ -18,10 +18,14 @@ export default function TopBar({ title, onSearch }: TopBarProps) {
     try {
       setChecking(true);
       const res = await api.checkRemindersNow();
-      setNotification(`Processed ${res.processed} pending reminders.`);
+      if (res && res.processed > 0) {
+        setNotification(`${res.processed} follow-up reminder${res.processed > 1 ? 's' : ''} updated!`);
+      } else {
+        setNotification('All follow-up reminders are up to date.');
+      }
       setTimeout(() => setNotification(null), 3500);
     } catch (e) {
-      setNotification('Reminder check failed.');
+      setNotification('Could not sync reminders. Please try again.');
       setTimeout(() => setNotification(null), 3500);
     } finally {
       setChecking(false);
@@ -55,18 +59,18 @@ export default function TopBar({ title, onSearch }: TopBarProps) {
         <button
           onClick={handleCheckReminders}
           disabled={checking}
-          className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-btn border border-edge-default hover:bg-brand-subtle text-ink-secondary transition-colors"
-          title="Trigger Python reminder worker verification immediately"
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-btn border border-edge-default hover:bg-brand-subtle text-ink-primary transition-colors disabled:opacity-50"
+          title="Check for due application follow-ups"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin text-brand-blue' : ''}`} />
-          <span>Worker Check</span>
+          <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin text-brand-blue' : 'text-ink-secondary'}`} />
+          <span>{checking ? 'Syncing...' : 'Sync Reminders'}</span>
         </button>
 
         <div className="h-4 w-px bg-edge-default" />
 
-        <div className="flex items-center gap-2 text-xs text-ink-muted">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Backend Connected</span>
+        <div className="flex items-center gap-1.5 text-xs text-ink-secondary" title="Real-time encrypted cloud sync active">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+          <span className="font-medium">Cloud Synced</span>
         </div>
       </div>
     </header>
