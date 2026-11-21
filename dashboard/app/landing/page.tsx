@@ -122,6 +122,7 @@ export default function LandingPage() {
         titleLines={['Apply Once, *Remember Everything*,', 'Built For *Every Job You Chase*']}
         titleLinesPhone={['Apply Once,', '*Remember Everything*,', 'Built For *What’s Next*']}
         navItems={NAV}
+        navStyle="menu"
         signUp={{ label: 'Sign Up', href: '/signup' }}
         primaryAction={{ label: 'Get Started Free', href: '/signup' }}
         secondaryAction={{ label: 'Open Dashboard', href: '/login' }}

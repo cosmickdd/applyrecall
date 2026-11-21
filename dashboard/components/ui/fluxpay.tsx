@@ -303,6 +303,8 @@ export interface FluxPayProps extends Omit< HTMLAttributes< HTMLElement >, 'chil
   height?: string
   /** `user` follows the visitor's `prefers-reduced-motion`; `always` and `never` force it. Default `user`. */
   reducedMotion?: FluxPayReducedMotion
+  /** Navigation style: 'menu' (hamburger button with dropdown card) | 'tab' (carved top tab) | 'both'. Default 'menu'. */
+  navStyle?: 'menu' | 'tab' | 'both'
   /** Extra classes for the root element. */
   className?: string
 }
@@ -989,11 +991,11 @@ interface NavbarProps {
   signUp?: FluxPayLink
   menuId: string
   pillId: string
+  navStyle?: 'menu' | 'tab' | 'both'
 }
 
 /**
- * The design carves the nav into the panel itself (the links sit in a tab cut
- * down from the top edge), so the header lives inside the screen, not above it
+ * The design carves the nav into the panel itself or presents a circular hamburger dropdown.
  */
 const Navbar = ({
   brandName,
@@ -1006,7 +1008,8 @@ const Navbar = ({
   closeMenuLabel,
   signUp,
   menuId,
-  pillId
+  pillId,
+  navStyle = 'menu'
 }: NavbarProps) => {
   // States
   const [open, setOpen] = useState(false)
@@ -1017,6 +1020,8 @@ const Navbar = ({
 
   const hasNav = navItems.length > 0
   const hasBrand = Boolean(logo) || Boolean(brandName)
+  const showTab = hasNav && (navStyle === 'tab' || navStyle === 'both')
+  const showMenuBtn = hasNav && (navStyle === 'menu' || navStyle === 'both')
 
   useEffect(() => {
     if (!open) return
@@ -1036,7 +1041,7 @@ const Navbar = ({
     }
 
     const handleWideChange = () => {
-      if (wide.matches) setOpen(false)
+      if (wide.matches && navStyle === 'tab') setOpen(false)
     }
 
     document.addEventListener('keydown', handleKeyDown)
@@ -1048,7 +1053,7 @@ const Navbar = ({
       document.removeEventListener('pointerdown', handlePointerDown)
       wide.removeEventListener('change', handleWideChange)
     }
-  }, [open])
+  }, [open, navStyle])
 
   return (
     <header ref={headerRef} className='fxp-header'>
@@ -1068,7 +1073,7 @@ const Navbar = ({
         <span />
       )}
 
-      {hasNav && (
+      {showTab && (
         <m.nav
           aria-label={navLabel}
           initial={{ y: '-105%' }}
@@ -1095,7 +1100,7 @@ const Navbar = ({
             {signUp.label}
           </a>
         )}
-        {hasNav && (
+        {showMenuBtn && (
           <button
             ref={menuButtonRef}
             type='button'
@@ -1112,13 +1117,21 @@ const Navbar = ({
               height='20'
               fill='none'
               stroke='currentColor'
-              strokeWidth='1.8'
+              strokeWidth='2'
               strokeLinecap='round'
               strokeLinejoin='round'
               aria-hidden='true'
               focusable='false'
             >
-              {open ? <path d='M18 6 6 18M6 6l12 12' /> : <path d='M4 6h16M4 12h16M4 18h16' />}
+              {open ? (
+                <path d='M18 6 6 18M6 6l12 12' />
+              ) : (
+                <>
+                  <line x1='4' y1='7' x2='20' y2='7' />
+                  <line x1='4' y1='12' x2='20' y2='12' />
+                  <line x1='4' y1='17' x2='20' y2='17' />
+                </>
+              )}
             </svg>
           </button>
         )}
@@ -1129,10 +1142,10 @@ const Navbar = ({
           <m.nav
             id={menuId}
             aria-label={navLabel}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6, transition: { duration: 0.16 } }}
-            transition={{ duration: 0.26, ease: EASE_OUT }}
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98, transition: { duration: 0.16 } }}
+            transition={{ duration: 0.25, ease: EASE_OUT }}
             className='fxp-menu'
           >
             <ul>
@@ -1775,47 +1788,53 @@ const BLOCK_CSS = `
   border-radius: 999px;
   color: #fff;
   background-color: rgb(255 255 255 / 0.08);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
-  transition: background-color 200ms ease-out;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+  transition: background-color 200ms ease-out, box-shadow 200ms ease-out;
 }
 
-.fxp .fxp-menu-btn:hover { background-color: rgb(255 255 255 / 0.14); }
-.fxp .fxp-menu-btn:active { background-color: rgb(255 255 255 / 0.2); }
+.fxp .fxp-menu-btn:hover {
+  background-color: rgb(255 255 255 / 0.16);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.32);
+}
 
-@media (min-width: 1024px) {
-  .fxp .fxp-menu-btn, .fxp .fxp-menu { display: none; }
+.fxp .fxp-menu-btn:active {
+  background-color: rgb(255 255 255 / 0.22);
 }
 
 .fxp .fxp-menu {
   position: absolute;
-  top: calc(var(--fxp-head-h) - 8px);
+  top: calc(var(--fxp-head-h) - 4px);
   left: var(--fxp-gutter);
   right: var(--fxp-gutter);
-  padding: 8px;
+  padding: 10px;
   border-radius: 20px;
-  background-color: var(--color-background);
-  box-shadow: 0 0 0 1px var(--color-border), 0 28px 56px -24px rgb(0 0 0 / 0.7);
+  background-color: rgb(8 13 28 / 0.96);
+  border: 1px solid rgb(143 203 255 / 0.2);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 28px 60px -20px rgb(0 0 0 / 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: 50;
 }
 
 .fxp .fxp-menu-link {
   display: flex;
   align-items: center;
   min-height: 48px;
-  padding-inline: 16px;
-  border-radius: 14px;
-  color: var(--color-muted-foreground);
+  padding-inline: 20px;
+  border-radius: 12px;
+  color: rgb(214 236 255 / 0.72);
   font-family: var(--fxp-font-mono);
   font-size: 13.5px;
-  font-weight: 500;
-  letter-spacing: 0.07em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   transition: background-color 200ms ease-out, color 200ms ease-out;
 }
 
 .fxp .fxp-menu-link:hover,
 .fxp .fxp-menu-link[aria-current='page'] {
-  background-color: var(--fxp-pill);
-  color: var(--color-foreground);
+  background-color: rgb(255 255 255 / 0.09);
+  color: #ffffff;
 }
 
 /* ---------- Copy ---------- */
@@ -2344,6 +2363,7 @@ export function FluxPay({
   navLabel = 'Primary',
   openMenuLabel = 'Open menu',
   closeMenuLabel = 'Close menu',
+  navStyle = 'menu',
   stats,
   transfers,
   transferTitle,
@@ -2467,6 +2487,7 @@ export function FluxPay({
               signUp={signUp}
               menuId={menuId}
               pillId={pillId}
+              navStyle={navStyle}
             />
 
             <div className='fxp-stage'>
