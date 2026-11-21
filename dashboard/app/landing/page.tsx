@@ -2,6 +2,7 @@
 
 import { useId } from 'react'
 import type { SVGProps } from 'react'
+import { Zap, BookmarkCheck, Send, Clock, ShieldCheck, Layers } from 'lucide-react'
 import FluxPay from '@/components/ui/fluxpay'
 import type { FluxPayFeature, FluxPayNavItem, FluxPayStat } from '@/components/ui/fluxpay'
 
@@ -24,40 +25,40 @@ const STATS: FluxPayStat[] = [
 
 const FEATURES: FluxPayFeature[] = [
   {
-    icon: '⚡',
-    tag: 'ATS AUTOFILL',
-    title: 'Instant ATS Auto-Fill',
-    description: 'Auto-detects & fills Workday, Greenhouse & Lever job forms in < 1.5s'
+    icon: <Zap className="w-3.5 h-3.5 text-[#79bdff]" strokeWidth={2.2} />,
+    tag: 'Extension',
+    title: '1-Click Application Autofill',
+    description: 'Instantly completes repetitive application forms across Greenhouse, Lever, and Workday'
   },
   {
-    icon: '🎯',
-    tag: 'ANSWER MEMORY',
-    title: 'Approved Answer Library',
-    description: 'Recalls exact past responses for behavioral & technical essays'
+    icon: <BookmarkCheck className="w-3.5 h-3.5 text-[#79bdff]" strokeWidth={2.2} />,
+    tag: 'Memory',
+    title: 'Curated Answer Library',
+    description: 'Remembers past approved responses to complex essays and adapts them to new roles'
   },
   {
-    icon: '📱',
-    tag: 'TELEGRAM RADAR',
-    title: 'Autonomous Mobile Copilot',
-    description: 'Delivers daily morning digests, recruiter alerts & instant mobile actions'
+    icon: <Send className="w-3.5 h-3.5 text-[#79bdff]" strokeWidth={2.2} />,
+    tag: 'Mobile Bot',
+    title: 'Telegram Follow-Up Assistant',
+    description: 'Sends morning application summaries, interview reminders, and instant status updates'
   },
   {
-    icon: '⏱️',
-    tag: 'SMART RADAR',
-    title: '7-Day Follow-Up Radar',
-    description: 'Automatically drafts recruiter check-in emails when application replies stall'
+    icon: <Clock className="w-3.5 h-3.5 text-[#79bdff]" strokeWidth={2.2} />,
+    tag: 'Radar',
+    title: '7-Day Follow-Up Alerts',
+    description: 'Pre-drafts polite check-in emails when recruiters have not responded in over a week'
   },
   {
-    icon: '🛡️',
-    tag: '100% PRIVATE',
-    title: 'Zero-Knowledge Encrypted Memory',
-    description: 'Your career credentials remain locally encrypted on your device'
+    icon: <ShieldCheck className="w-3.5 h-3.5 text-[#79bdff]" strokeWidth={2.2} />,
+    tag: 'Privacy',
+    title: 'Encrypted Career Vault',
+    description: 'Stored safely on your computer. Your application data remains confidential and private'
   },
   {
-    icon: '📊',
-    tag: 'LIVE PIPELINE',
-    title: 'Real-Time Application Kanban',
-    description: 'Organizes every applied role across Saved, Applied, Interview & Offer'
+    icon: <Layers className="w-3.5 h-3.5 text-[#79bdff]" strokeWidth={2.2} />,
+    tag: 'Pipeline',
+    title: 'Live Application Tracker',
+    description: 'Automatically organizes every applied role across Saved, Applied, Interview, and Offer'
   }
 ]
 

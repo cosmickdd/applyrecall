@@ -232,7 +232,7 @@ export interface FluxPayFonts {
 }
 
 export interface FluxPayFeature {
-  icon?: string
+  icon?: ReactNode
   title: string
   description: string
   tag?: string
@@ -2170,14 +2170,15 @@ const BLOCK_CSS = `
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 50px;
+  min-height: 48px;
   padding: 6px 16px 6px 10px;
   border-radius: 999px;
   background-color: rgb(8 16 38 / 0.72);
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0));
   border: 1px solid rgb(143 203 255 / 0.22);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.05), 0 12px 32px -8px rgb(0 0 0 / 0.5);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 0 16px rgb(80 130 255 / 0.05), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
 }
 
@@ -2230,8 +2231,13 @@ const BLOCK_CSS = `
 }
 
 .fxp .fxp-feature-icon {
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
+  color: #79bdff;
 }
 
 .fxp .fxp-feature-title {
@@ -2304,7 +2310,7 @@ const BLOCK_CSS = `
   justify-content: space-around;
   gap: 12px;
   min-width: 100%;
-  animation: fxp-marquee 30s linear infinite;
+  animation: fxp-marquee 32s linear infinite;
 }
 
 .fxp .fxp-marquee-track:hover .fxp-marquee-group {
@@ -2314,28 +2320,34 @@ const BLOCK_CSS = `
 .fxp .fxp-marquee-item {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
+  gap: 8px;
+  padding: 6px 15px;
   border-radius: 999px;
-  background-color: rgb(255 255 255 / 0.05);
-  border: 1px solid rgb(255 255 255 / 0.1);
-  color: rgb(214 236 255 / 0.85);
-  font-family: var(--fxp-font-mono);
-  font-size: 11.5px;
+  background-color: rgb(10 18 42 / 0.65);
+  border: 1px solid rgb(143 203 255 / 0.16);
+  color: rgb(214 236 255 / 0.88);
+  font-family: var(--fxp-font-sans);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  transition: background-color 200ms ease, border-color 200ms ease;
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 
 .fxp .fxp-marquee-item:hover {
-  background-color: rgb(255 255 255 / 0.12);
-  border-color: rgb(143 203 255 / 0.4);
+  background-color: rgb(20 34 76 / 0.85);
+  border-color: rgb(143 203 255 / 0.38);
   color: #ffffff;
 }
 
 .fxp .fxp-marquee-icon {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #8fcbff;
 }
 
 @keyframes fxp-marquee {
