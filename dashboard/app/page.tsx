@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import TopBar from '@/components/TopBar';
 import FollowUpModal from '@/components/FollowUpModal';
+import GlassyDashboard from '@/components/ui/glassy-dashboard';
 import { 
   Briefcase, 
   Clock, 
@@ -15,11 +16,13 @@ import {
   Mail,
   Send,
   Puzzle,
-  Calendar
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
 export default function OverviewPage() {
+  const [viewMode, setViewMode] = useState<'glassy' | 'classic'>('glassy');
   const [summary, setSummary] = useState<any>(null);
   const [applications, setApplications] = useState<any[]>([]);
   const [reminders, setReminders] = useState<any[]>([]);
@@ -28,27 +31,50 @@ export default function OverviewPage() {
   const [selectedAppForFollowup, setSelectedAppForFollowup] = useState<any>(null);
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        const [sumRes, appsRes, remsRes, actRes] = await Promise.all([
-          api.getSummary(),
-          api.getApplications({ sort: 'newest' }),
-          api.getReminders({ tab: 'today' }),
-          api.getActivity()
-        ]);
-        setSummary(sumRes);
-        setApplications(appsRes);
-        setReminders(remsRes);
-        setActivity(actRes);
-      } catch (e) {
-        console.error('Overview load error:', e);
-      } finally {
-        setLoading(false);
-      }
+    const saved = localStorage.getItem('applyrecall_overview_mode');
+    if (saved === 'classic' || saved === 'glassy') {
+      setViewMode(saved);
     }
-    loadData();
   }, []);
+
+  const switchMode = (mode: 'glassy' | 'classic') => {
+    setViewMode(mode);
+    localStorage.setItem('applyrecall_overview_mode', mode);
+  };
+
+  useEffect(() => {
+    if (viewMode === 'classic') {
+      const loadData = async () => {
+        try {
+          setLoading(true);
+          const [sumRes, appsRes, remsRes, actRes] = await Promise.all([
+            api.getSummary(),
+            api.getApplications({ sort: 'newest' }),
+            api.getReminders({ tab: 'today' }),
+            api.getActivity()
+          ]);
+          setSummary(sumRes);
+          setApplications(appsRes);
+          setReminders(remsRes);
+          setActivity(actRes);
+        } catch (e) {
+          console.error('Overview load error:', e);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadData();
+    }
+  }, [viewMode]);
+
+  // If in Glassy View Mode, render the tuned Spatial Glassy Dashboard
+  if (viewMode === 'glassy') {
+    return (
+      <div className="w-full min-h-screen">
+        <GlassyDashboard onSwitchToClassic={() => switchMode('classic')} />
+      </div>
+    );
+  }
 
   const statusColors: Record<string, string> = {
     Saved: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -65,14 +91,23 @@ export default function OverviewPage() {
       <TopBar title="Overview" />
 
       <main className="flex-1 p-8 max-w-[1304px] w-full mx-auto space-y-8">
-        {/* Page Title & Copy */}
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-primary">
-            Your applications, in one place.
-          </h1>
-          <p className="text-sm text-ink-secondary mt-1">
-            Keep track of where you've applied and what needs your attention.
-          </p>
+        {/* Page Title & Switch Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-ink-primary">
+              Your applications, in one place.
+            </h1>
+            <p className="text-sm text-ink-secondary mt-1">
+              Keep track of where you've applied and what needs your attention.
+            </p>
+          </div>
+          <button
+            onClick={() => switchMode('glassy')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold rounded-btn shadow-subtle transition-all"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Switch to Spatial Glassy View</span>
+          </button>
         </div>
 
         {/* 4 Metric Cards */}
@@ -238,9 +273,8 @@ export default function OverviewPage() {
             </div>
           </section>
 
-          {/* Section C: Pipeline Distribution & Section E: Connected Tools */}
+          {/* Section C: Pipeline Distribution */}
           <div className="space-y-6">
-            {/* Pipeline Distribution */}
             <section className="bg-brand-surface p-6 rounded-card border border-edge-default shadow-subtle">
               <h2 className="text-base font-semibold text-ink-primary mb-4">Pipeline Distribution</h2>
               {summary?.pipeline ? (
