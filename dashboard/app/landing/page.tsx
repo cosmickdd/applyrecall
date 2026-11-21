@@ -17,9 +17,9 @@ const NAV: FluxPayNavItem[] = [
 ]
 
 const STATS: FluxPayStat[] = [
-  { value: 100, suffix: '%', label: 'encrypted private memory' },
-  { value: 1.2, decimals: 1, suffix: 's', label: 'average ATS autofill speed' },
-  { value: 10, suffix: 'x', label: 'faster job applications' }
+  { value: 50, suffix: 'K+', label: 'applications & answers stored' },
+  { value: 100, suffix: '%', label: 'private encrypted memory' },
+  { value: 99.99, decimals: 2, suffix: '%', label: 'uptime & bank-grade security' }
 ]
 
 const APPLICATION_TRANSFERS: FluxPayTransfer[] = [
@@ -111,7 +111,7 @@ function ApplyRecallLogoMark(props: SVGProps<SVGSVGElement>) {
 
 export default function LandingPage() {
   return (
-    <div className="w-full min-h-screen bg-[#040c27]">
+    <div className="w-full min-h-screen bg-[#000000]">
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link rel="stylesheet" href={FONTS_URL} precedence="default" />

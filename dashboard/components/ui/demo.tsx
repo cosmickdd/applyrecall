@@ -95,7 +95,7 @@ export default function Demo(props: Partial< typeof settings >) {
   const s = { ...settings, ...props }
 
   return (
-    <div className='w-full'>
+    <div className='w-full bg-black'>
       <link rel='preconnect' href='https://fonts.googleapis.com' />
       <link rel='preconnect' href='https://fonts.gstatic.com' crossOrigin='anonymous' />
       <link rel='stylesheet' href={FONTS_URL} precedence='default' />

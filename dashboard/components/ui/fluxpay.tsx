@@ -1591,16 +1591,24 @@ const BLOCK_CSS = `
   --fxp-font-sans: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
   --fxp-font-serif: var(--font-serif, ui-serif, Georgia, serif);
   --fxp-font-mono: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, monospace);
-  --fxp-pill: color-mix(in oklab, var(--color-primary) 10%, transparent);
-  --fxp-pill-ring: color-mix(in oklab, var(--color-primary) 16%, transparent);
+  --fxp-pill: color-mix(in oklab, var(--color-primary, #ffffff) 10%, transparent);
+  --fxp-pill-ring: color-mix(in oklab, var(--color-primary, #ffffff) 16%, transparent);
+
+  /* Built-in fallback tokens so the black carved shelf and surfaces render identically to the design */
+  --fxp-shelf-bg: #000000;
+  --color-background: var(--fxp-shelf-bg, #000000);
+  --color-foreground: #ffffff;
+  --color-muted-foreground: rgb(214 236 255 / 0.74);
+  --color-border: rgba(255, 255, 255, 0.16);
+  --color-primary: #ffffff;
 
   box-sizing: border-box;
   display: flex;
   width: 100%;
   min-height: var(--fxp-height, 100dvh);
   padding: 8px;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+  background-color: var(--fxp-shelf-bg, #000000);
+  color: var(--color-foreground, #ffffff);
   font-family: var(--fxp-font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -1626,9 +1634,9 @@ const BLOCK_CSS = `
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
   clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
-.fxp .fxp-flip-x { scale: -1 1; }
-.fxp .fxp-flip-y { scale: 1 -1; }
-.fxp .fxp-flip-xy { scale: -1 -1; }
+.fxp .fxp-flip-x { transform: scaleX(-1); scale: -1 1; }
+.fxp .fxp-flip-y { transform: scaleY(-1); scale: 1 -1; }
+.fxp .fxp-flip-xy { transform: scale(-1, -1); scale: -1 -1; }
 
 /* Visible focus on every control: dark ink on the pale surfaces, sky blue on the navy panel */
 .fxp :is(a, button):focus-visible { outline: 2px solid #7cc4ff; outline-offset: 3px; }
@@ -2260,10 +2268,16 @@ const BLOCK_CSS = `
   justify-content: center;
   height: var(--fxp-shelf-h);
   margin-bottom: -1px;
-  color: var(--color-background);
+  color: var(--fxp-shelf-bg, #000000);
 }
 
-.fxp .fxp-shelf-shoulder { flex: none; width: calc(var(--fxp-shelf-h) * 0.5); height: 100%; }
+.fxp .fxp-shelf-shoulder {
+  flex: none;
+  width: calc(var(--fxp-shelf-h) * 0.5);
+  height: 100%;
+  color: var(--fxp-shelf-bg, #000000);
+  fill: currentColor;
+}
 
 .fxp .fxp-shelf-body {
   position: relative;
@@ -2274,7 +2288,7 @@ const BLOCK_CSS = `
   min-width: 0;
   margin-inline: -3px;
   padding-top: 6px;
-  background-color: var(--color-background);
+  background-color: var(--fxp-shelf-bg, #000000);
 }
 
 @media (min-width: 1024px) {
@@ -2288,8 +2302,8 @@ const BLOCK_CSS = `
   display: flex;
   flex-direction: column-reverse;
   align-items: center;
-  gap: 2px;
-  padding-inline: clamp(4px, 0.7vw, 12px);
+  gap: 3px;
+  padding-inline: clamp(10px, 1.6vw, 32px);
   text-align: center;
 }
 
@@ -2300,24 +2314,26 @@ const BLOCK_CSS = `
   .fxp .fxp-stat { flex: 1 1 auto; }
 }
 
-.fxp .fxp-stat + .fxp-stat { border-left: 1px solid var(--color-border); }
+.fxp .fxp-stat + .fxp-stat {
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
 
 .fxp .fxp-stat-value {
   position: relative;
-  color: var(--color-primary);
-  font-size: clamp(19px, 0.6rem + 0.9vw, 26px);
+  color: #ffffff;
+  font-size: clamp(20px, 0.65rem + 1vw, 28px);
   font-weight: 700;
   line-height: 1.1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
 }
 
 /* One line from 640px up; on narrower phones the three columns are too tight, so a label may wrap there */
 .fxp .fxp-stat-label {
-  color: var(--color-muted-foreground);
-  font-size: clamp(11.5px, 0.42rem + 0.48vw, 14px);
+  color: rgb(214 236 255 / 0.74);
+  font-size: clamp(11.5px, 0.42rem + 0.48vw, 13.5px);
   line-height: 1.3;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;
 }
 
 @media (min-width: 640px) {
