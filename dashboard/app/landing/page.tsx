@@ -18,9 +18,26 @@ const NAV: FluxPayNavItem[] = [
 ]
 
 const STATS: FluxPayStat[] = [
-  { value: 50, suffix: 'K+', label: 'applications & answers stored' },
-  { value: 100, suffix: '%', label: 'private encrypted memory' },
-  { value: 99.99, decimals: 2, suffix: '%', label: 'uptime & bank-grade security' }
+  {
+    prefix: '< ',
+    value: 1.5,
+    decimals: 1,
+    suffix: 's',
+    label: 'average ATS form autofill speed'
+  },
+  {
+    prefix: '~',
+    value: 15,
+    decimals: 0,
+    suffix: ' min',
+    label: 'saved on every job application'
+  },
+  {
+    value: 100,
+    decimals: 0,
+    suffix: '%',
+    label: 'private on-device memory encryption'
+  }
 ]
 
 const FEATURES: FluxPayFeature[] = [
