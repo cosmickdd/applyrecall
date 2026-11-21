@@ -12,7 +12,8 @@ import {
   Send, 
   Puzzle,
   ChevronRight,
-  LogOut
+  LogOut,
+  Sparkles
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
@@ -22,6 +23,7 @@ const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Applications', href: '/applications', icon: Briefcase },
   { name: 'Answer Library', href: '/answers', icon: BookOpen },
+  { name: 'Landing Page', href: '/landing', icon: Sparkles },
   { name: 'My Profile', href: '/profile', icon: User },
   { name: 'Reminders', href: '/reminders', icon: Bell },
   { name: 'Settings', href: '/settings', icon: Settings },
