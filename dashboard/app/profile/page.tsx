@@ -376,31 +376,31 @@ export default function ProfilePage() {
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
-                  placeholder="Company"
+                  placeholder="Company Name"
                   required
                   value={newExp.company}
                   onChange={(e) => setNewExp({ ...newExp, company: e.target.value })}
-                  className="px-3 py-1.5 text-xs border rounded-btn"
+                  className="px-3 py-2 text-xs bg-brand-surface border border-edge-default rounded-btn text-ink-primary focus:outline-none focus:border-brand-blue"
                 />
                 <input
                   type="text"
-                  placeholder="Role / Position"
+                  placeholder="Role / Title"
                   required
                   value={newExp.position}
                   onChange={(e) => setNewExp({ ...newExp, position: e.target.value })}
-                  className="px-3 py-1.5 text-xs border rounded-btn"
+                  className="px-3 py-2 text-xs bg-brand-surface border border-edge-default rounded-btn text-ink-primary focus:outline-none focus:border-brand-blue"
                 />
               </div>
               <textarea
-                placeholder="Description of work, achievements..."
+                placeholder="Key accomplishments, tools used, and responsibilities..."
                 rows={2}
                 value={newExp.description}
                 onChange={(e) => setNewExp({ ...newExp, description: e.target.value })}
-                className="w-full px-3 py-1.5 text-xs border rounded-btn"
+                className="w-full px-3 py-2 text-xs bg-brand-surface border border-edge-default rounded-btn text-ink-primary focus:outline-none focus:border-brand-blue"
               />
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowAddExp(false)} className="px-3 py-1 text-xs">Cancel</button>
-                <button type="submit" className="px-3 py-1 text-xs bg-brand-blue text-white rounded-btn">Save Experience</button>
+                <button type="button" onClick={() => setShowAddExp(false)} className="px-3 py-1.5 text-xs text-ink-secondary hover:text-ink-primary">Cancel</button>
+                <button type="submit" className="px-3 py-1.5 text-xs font-semibold bg-brand-blue hover:bg-brand-deep text-white rounded-btn transition-colors">Save Role</button>
               </div>
             </form>
           )}
@@ -446,26 +446,26 @@ export default function ProfilePage() {
                   required
                   value={newProj.name}
                   onChange={(e) => setNewProj({ ...newProj, name: e.target.value })}
-                  className="px-3 py-1.5 text-xs border rounded-btn"
+                  className="px-3 py-2 text-xs bg-brand-surface border border-edge-default rounded-btn text-ink-primary focus:outline-none focus:border-brand-blue"
                 />
                 <input
                   type="text"
-                  placeholder="Technologies (e.g. Go, React)"
+                  placeholder="Technologies (e.g. Python, React, Next.js)"
                   value={newProj.technologies}
                   onChange={(e) => setNewProj({ ...newProj, technologies: e.target.value })}
-                  className="px-3 py-1.5 text-xs border rounded-btn"
+                  className="px-3 py-2 text-xs bg-brand-surface border border-edge-default rounded-btn text-ink-primary focus:outline-none focus:border-brand-blue"
                 />
               </div>
               <textarea
-                placeholder="Description of the project..."
+                placeholder="What did you build, what problem did it solve, and what were the outcomes?"
                 rows={2}
                 value={newProj.description}
                 onChange={(e) => setNewProj({ ...newProj, description: e.target.value })}
-                className="w-full px-3 py-1.5 text-xs border rounded-btn"
+                className="w-full px-3 py-2 text-xs bg-brand-surface border border-edge-default rounded-btn text-ink-primary focus:outline-none focus:border-brand-blue"
               />
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowAddProj(false)} className="px-3 py-1 text-xs">Cancel</button>
-                <button type="submit" className="px-3 py-1 text-xs bg-brand-blue text-white rounded-btn">Save Project</button>
+                <button type="button" onClick={() => setShowAddProj(false)} className="px-3 py-1.5 text-xs text-ink-secondary hover:text-ink-primary">Cancel</button>
+                <button type="submit" className="px-3 py-1.5 text-xs font-semibold bg-brand-blue hover:bg-brand-deep text-white rounded-btn transition-colors">Save Project</button>
               </div>
             </form>
           )}
