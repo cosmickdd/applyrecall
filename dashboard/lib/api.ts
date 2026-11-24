@@ -29,10 +29,12 @@ function getAuthHeader(): Record<string, string> {
 }
 
 async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
+  // Let the browser set the multipart boundary for FormData uploads.
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...getAuthHeader(),
-    ...(options.headers || {})
+    ...(options.headers as Record<string, string> || {})
   };
 
   const response = await fetch(`${API_BASE}${url}`, {
@@ -127,6 +129,10 @@ export const api = {
   }),
   deleteProject: (id: string) => fetcher<any>(`/profile/projects/${id}`, {
     method: 'DELETE'
+  }),
+  autofillResume: (formData: FormData) => fetcher<any>('/profile/resume-autofill', {
+    method: 'POST',
+    body: formData
   }),
   exportData: () => fetcher<any>('/profile/export'),
 

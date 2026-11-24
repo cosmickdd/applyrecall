@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from typing import Dict, Any, List
 from app.database import get_db, now_iso, new_uuid
 from app.routers.auth import get_current_user_id, ensure_profile_exists
+from app.services.resume_parser import MAX_RESUME_BYTES, extract_resume_text, parse_resume
 from app.models.schemas import (
     ProfileUpdate,
     ProfileResponse,
@@ -82,6 +83,41 @@ async def update_profile(
     cursor = await conn.execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,))
     updated_row = await cursor.fetchone()
     return {"profile": dict(updated_row), "message": "Profile updated successfully."}
+
+@router.post("/resume-autofill", response_model=Dict[str, Any])
+async def resume_autofill(
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id)
+):
+    """Reads an uploaded resume and returns the profile fields found in it.
+
+    The dashboard uses the response to prefill the profile form, so students do not
+    have to retype details that every application asks for anyway.
+    """
+    data = await file.read()
+    if len(data) > MAX_RESUME_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Resume is larger than 5 MB. Please upload a smaller file."
+        )
+
+    try:
+        text = extract_resume_text(file.filename or "", data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if len(text.strip()) < 20:
+        raise HTTPException(
+            status_code=400,
+            detail="We could not read any text from that resume. If it is a scanned PDF, upload a text-based PDF, DOCX, or TXT file instead."
+        )
+
+    fields = parse_resume(text)
+    return {
+        "fields": fields,
+        "detected_fields": len(fields),
+        "source_filename": file.filename,
+    }
 
 @router.post("/experiences", response_model=ExperienceResponse)
 async def add_experience(

@@ -13,9 +13,28 @@ import {
   Check, 
   Plus, 
   Trash2,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  Upload
 } from 'lucide-react';
 import { api } from '@/lib/api';
+
+const RESUME_FIELD_LABELS: Record<string, string> = {
+  first_name: 'First name',
+  last_name: 'Last name',
+  email: 'Email',
+  phone: 'Phone',
+  city: 'City',
+  country: 'Country',
+  college: 'College',
+  degree: 'Degree',
+  branch: 'Major / Branch',
+  graduation_year: 'Graduation year',
+  linkedin_url: 'LinkedIn',
+  github_url: 'GitHub',
+  portfolio_url: 'Portfolio',
+  summary: 'Summary',
+};
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null);
@@ -24,6 +43,13 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Resume autofill (prefills the form from an uploaded resume)
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [autofilling, setAutofilling] = useState(false);
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
+  const [resumeMessage, setResumeMessage] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   // Forms for adding exp / project
   const [showAddExp, setShowAddExp] = useState(false);
@@ -63,6 +89,42 @@ export default function ProfilePage() {
       console.error(e);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleResumeAutofill = async () => {
+    if (!resumeFile || autofilling) return;
+    try {
+      setAutofilling(true);
+      setResumeError(null);
+      setResumeMessage(null);
+
+      const formData = new FormData();
+      formData.append('file', resumeFile);
+      const res = await api.autofillResume(formData);
+      const fields: Record<string, string> = res?.fields || {};
+
+      const next: any = { ...(profile || {}) };
+      const filled: string[] = [];
+      Object.entries(fields).forEach(([key, value]) => {
+        if (!value) return;
+        const hasValue = String(next[key] ?? '').trim().length > 0;
+        if (overwriteExisting || !hasValue) {
+          next[key] = value;
+          filled.push(RESUME_FIELD_LABELS[key] || key);
+        }
+      });
+      setProfile(next);
+
+      if (filled.length === 0) {
+        setResumeMessage('We read your resume, but every detail we found is already filled in. Tick "Overwrite existing values" to replace them.');
+      } else {
+        setResumeMessage(`Filled ${filled.length} field${filled.length === 1 ? '' : 's'}: ${filled.join(', ')}. Review them, then press Save Changes.`);
+      }
+    } catch (e: any) {
+      setResumeError(e?.message || 'Could not read that resume. Please try another file.');
+    } finally {
+      setAutofilling(false);
     }
   };
 
@@ -175,6 +237,69 @@ export default function ProfilePage() {
             </p>
           </div>
         </div>
+
+        {/* Resume Autofill */}
+        <section className="bg-brand-surface p-6 rounded-card border border-edge-default shadow-subtle space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-edge-default">
+            <FileText className="w-4 h-4 text-brand-blue" />
+            <h2 className="text-sm font-bold text-ink-primary uppercase tracking-wide">Autofill from Resume</h2>
+          </div>
+
+          <p className="text-xs text-ink-secondary leading-relaxed">
+            Upload your resume (PDF, DOCX, or TXT) and we will copy the details applications keep asking for —
+            name, contact info, links, education, and summary — into the form below.
+          </p>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border border-dashed border-edge-strong rounded-btn bg-brand-soft cursor-pointer hover:border-brand-blue">
+              <Upload className="w-4 h-4 text-ink-muted shrink-0" />
+              <span className={`truncate ${resumeFile ? 'text-ink-primary font-medium' : 'text-ink-muted'}`}>
+                {resumeFile ? resumeFile.name : 'Choose a PDF, DOCX, or TXT resume'}
+              </span>
+              <input
+                type="file"
+                accept=".pdf,.docx,.txt,.md"
+                className="hidden"
+                onChange={(e) => {
+                  setResumeFile(e.target.files?.[0] || null);
+                  setResumeMessage(null);
+                  setResumeError(null);
+                }}
+              />
+            </label>
+            <button
+              onClick={handleResumeAutofill}
+              disabled={!resumeFile || autofilling}
+              className="flex items-center justify-center gap-2 px-5 py-2 bg-brand-blue text-white rounded-btn text-xs font-semibold hover:bg-brand-deep transition-colors shadow-subtle disabled:opacity-50"
+            >
+              {autofilling ? 'Reading resume...' : 'Autofill Profile'}
+            </button>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-ink-secondary">
+            <input
+              type="checkbox"
+              checked={overwriteExisting}
+              onChange={(e) => setOverwriteExisting(e.target.checked)}
+              className="accent-brand-blue"
+            />
+            <span>Overwrite existing values (leave off to only fill empty fields)</span>
+          </label>
+
+          {resumeError && (
+            <div className="p-2.5 rounded-btn bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{resumeError}</span>
+            </div>
+          )}
+
+          {resumeMessage && (
+            <div className="p-2.5 rounded-btn bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-start gap-1.5">
+              <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{resumeMessage}</span>
+            </div>
+          )}
+        </section>
 
         {/* Section 1: Basic Personal Details */}
         <section className="bg-brand-surface p-6 rounded-card border border-edge-default shadow-subtle space-y-4">
