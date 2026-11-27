@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from typing import Dict, Any, List
 from app.database import get_db, now_iso, new_uuid
 from app.routers.auth import get_current_user_id, ensure_profile_exists
-from app.services.resume_parser import MAX_RESUME_BYTES, extract_resume_text, parse_resume
+from app.services.resume_parser import (
+    MAX_RESUME_BYTES,
+    extract_resume_text,
+    parse_resume,
+    parse_resume_extras,
+)
 from app.models.schemas import (
     ProfileUpdate,
     ProfileResponse,
@@ -113,9 +118,12 @@ async def resume_autofill(
         )
 
     fields = parse_resume(text)
+    extras = parse_resume_extras(text)
     return {
         "fields": fields,
         "detected_fields": len(fields),
+        "experiences": extras["experiences"],
+        "projects": extras["projects"],
         "source_filename": file.filename,
     }
 

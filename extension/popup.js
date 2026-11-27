@@ -1,111 +1,888 @@
-// ApplyRecall Extension Popup Controller
-// Premium SaaS experience: connects to backend with secure device token,
-// auto-syncs student profile, matches approved answers, and executes safe multi-framework autofill.
+// ApplyRecall extension popup controller
+//
+// Design rule: every action has an automatic path, and a manual alternative.
+//   Connect      -> automatic website-login sync, or a manual pairing code
+//   Tracking     -> automatic tracking of pages with forms, or the manual button
+//   Autofill     -> safe default (keeps typed values), or manual "replace everything"
+//   Answer saves -> one-click save of questions detected on the page, or manual entry
 
 const PROD_API_BASE = "https://applyrecall.onrender.com/api";
 const PROD_DASHBOARD_BASE = "https://applyrecall.vercel.app";
 const DEV_API_BASE = "http://localhost:8000/api";
 const DEV_DASHBOARD_BASE = "http://localhost:3000";
 
+const STORAGE_KEYS = ["device_token", "user_profile"];
+const SETTING_KEYS = ["api_base_url", "dashboard_base_url", "fill_mode", "auto_track"];
+const DASHBOARD_URL_MATCHERS = ["localhost:3000", "127.0.0.1:3000", "applyrecall.vercel.app", "applyrecall.onrender.com"];
+
 let API_BASE = PROD_API_BASE;
 let DASHBOARD_BASE = PROD_DASHBOARD_BASE;
 
 document.addEventListener("DOMContentLoaded", async () => {
-  // DOM Elements - State Containers
-  const stateNotConnected = document.getElementById("state-not-connected");
-  const stateConnected = document.getElementById("state-connected");
-  const stateSubmission = document.getElementById("state-submission-confirm");
-  const connectionBadge = document.getElementById("connection-badge");
-  const connectionText = document.getElementById("connection-text");
-  const userInfoFooter = document.getElementById("user-info-footer");
-  const toastEl = document.getElementById("status-toast");
+  const $ = (id) => document.getElementById(id);
 
-  // Settings Drawer Elements
-  const settingsDrawer = document.getElementById("server-config-drawer");
-  const toggleSettingsBtn = document.getElementById("toggle-settings-btn");
-  const closeSettingsBtn = document.getElementById("close-settings-btn");
-  const apiUrlInput = document.getElementById("api-url-input");
-  const dashboardUrlInput = document.getElementById("dashboard-url-input");
-  const saveApiUrlBtn = document.getElementById("save-api-url-btn");
-  const resetProdUrlBtn = document.getElementById("reset-prod-url-btn");
-  const resetDevUrlBtn = document.getElementById("reset-dev-url-btn");
-  const openDashLink = document.getElementById("open-dashboard-link");
-  const openAnswersLink = document.getElementById("open-answers-link");
-  const dashSettingsLink = document.getElementById("dashboard-settings-link");
+  // Containers
+  const stateNotConnected = $("state-not-connected");
+  const stateConnected = $("state-connected");
+  const stateSubmission = $("state-submission-confirm");
+  const toastEl = $("status-toast");
 
-  // Pairing Elements
-  const pairingCodeInput = document.getElementById("pairing-code-input");
-  const connectBtn = document.getElementById("connect-btn");
-  const syncWebsiteBtn = document.getElementById("sync-website-btn");
+  // Header
+  const connectionBadge = $("connection-badge");
+  const connectionText = $("connection-text");
+  const userInfoFooter = $("user-info-footer");
 
-  // Job Context Elements
-  const jobCompanyEl = document.getElementById("job-company");
-  const jobPositionEl = document.getElementById("job-position");
-  const jobSourceEl = document.getElementById("job-source");
-  const jobLocationEl = document.getElementById("job-location");
-  const locationText = document.getElementById("location-text");
-  const atsBadge = document.getElementById("ats-badge");
-  const activeStatusBadge = document.getElementById("active-status-badge");
-  const startAppBtn = document.getElementById("start-application-btn");
+  // Settings drawer
+  const settingsDrawer = $("server-config-drawer");
+  const toggleSettingsBtn = $("toggle-settings-btn");
+  const closeSettingsBtn = $("close-settings-btn");
+  const apiUrlInput = $("api-url-input");
+  const dashboardUrlInput = $("dashboard-url-input");
+  const saveApiUrlBtn = $("save-api-url-btn");
+  const resetProdUrlBtn = $("reset-prod-url-btn");
+  const resetDevUrlBtn = $("reset-dev-url-btn");
+  const openDashLink = $("open-dashboard-link");
+  const openAnswersLink = $("open-answers-link");
+  const dashSettingsLink = $("dashboard-settings-link");
 
-  // Autofill Elements
-  const detectedCountEl = document.getElementById("detected-fields-count");
-  const rescanBtn = document.getElementById("rescan-btn");
-  const safeModeCheck = document.getElementById("safe-mode-check");
-  const autofillBtn = document.getElementById("autofill-btn");
-  const resultsPanel = document.getElementById("autofill-results");
-  const resultsCountBadge = document.getElementById("results-count-badge");
-  const filledList = document.getElementById("filled-items-list");
+  // Connect screen
+  const websiteStatusText = $("website-status-text");
+  const websiteStatusDot = $("website-status-dot");
+  const syncWebsiteBtn = $("sync-website-btn");
+  const toggleManualPairBtn = $("toggle-manual-pair");
+  const manualPairPanel = $("manual-pair-panel");
+  const pairingCodeInput = $("pairing-code-input");
+  const connectBtn = $("connect-btn");
 
-  // Answer Library Elements
-  const newQInput = document.getElementById("new-q-text");
-  const newAInput = document.getElementById("new-a-text");
-  const newScopeSelect = document.getElementById("new-scope-select");
-  const saveAnswerBtn = document.getElementById("save-answer-btn");
+  // Page context
+  const jobCompanyEl = $("job-company");
+  const jobPositionEl = $("job-position");
+  const jobSourceEl = $("job-source");
+  const jobLocationEl = $("job-location");
+  const locationText = $("location-text");
+  const atsBadge = $("ats-badge");
+  const activeStatusBadge = $("active-status-badge");
+  const startAppBtn = $("start-application-btn");
+  const autoTrackCheck = $("auto-track-check");
 
-  // Submission Elements
-  const confirmAppliedBtn = document.getElementById("confirm-applied-btn");
-  const dismissSubmissionBtn = document.getElementById("dismiss-submission-btn");
-  const reminderCheck = document.getElementById("schedule-reminder-check");
+  // Autofill
+  const detectedCountEl = $("detected-fields-count");
+  const rescanBtn = $("rescan-btn");
+  const fillModeToggle = $("fill-mode-toggle");
+  const fillModeHint = $("fill-mode-hint");
+  const autofillBtn = $("autofill-btn");
+  const autofillLabel = autofillBtn ? autofillBtn.querySelector(".btn-label") : null;
+  const resultsPanel = $("autofill-results");
+  const resultsCountBadge = $("results-count-badge");
+  const resultsText = $("results-text");
+  const filledList = $("filled-items-list");
 
-  // Active state context
-  let activeTabId = null;
-  let currentContext = {
+  // Answer library
+  const detectedQuestionsBadge = $("detected-questions-badge");
+  const detectedQuestionsList = $("detected-questions-list");
+  const toggleManualAnswerBtn = $("toggle-manual-answer");
+  const manualAnswerPanel = $("manual-answer-panel");
+  const newQInput = $("new-q-text");
+  const newAInput = $("new-a-text");
+  const newScopeSelect = $("new-scope-select");
+  const saveAnswerBtn = $("save-answer-btn");
+
+  // Submission
+  const confirmAppliedBtn = $("confirm-applied-btn");
+  const dismissSubmissionBtn = $("dismiss-submission-btn");
+  const reminderCheck = $("schedule-reminder-check");
+
+  const context = {
     deviceToken: null,
     profile: null,
     job: null,
     application: null,
     fields: [],
-    essayFields: []
+    essayFields: [],
+    websiteToken: null,
+    savedPrompts: new Set()
   };
 
-  // Toast notification helper
-  function showToast(msg, type = "success") {
+  // Resolved once the initial storage/tab read finishes, so clicks made while the
+  // popup is still opening wait for the account context instead of failing.
+  let resolveReady;
+  const ready = new Promise((resolve) => { resolveReady = resolve; });
+
+  let fillMode = "safe";
+  let autoTrack = true;
+  let activeTabId = null;
+  let tabAppKey = null;
+  let tabSubmitKey = null;
+
+  // ---------------------------------------------------------------- helpers
+
+  function showToast(message, type = "success") {
     if (!toastEl) return;
-    toastEl.textContent = msg;
+    toastEl.textContent = message;
     toastEl.className = `toast toast-${type}`;
-    toastEl.classList.remove("hidden");
-    setTimeout(() => {
-      toastEl.classList.add("hidden");
-    }, 4500);
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => toastEl.classList.add("hidden"), 4500);
   }
 
-  // Update dynamic links to point to current dashboard base
-  function updateFooterLinks() {
-    const cleanDash = DASHBOARD_BASE.replace(/\/+$/, "");
-    if (openDashLink) openDashLink.href = cleanDash;
-    if (openAnswersLink) openAnswersLink.href = `${cleanDash}/answers`;
-    if (dashSettingsLink) dashSettingsLink.href = `${cleanDash}/settings`;
-  }
-
-  // Auto-uppercase & filter pairing code input
-  if (pairingCodeInput) {
-    pairingCodeInput.addEventListener("input", (e) => {
-      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  function sendToTab(tabId, message) {
+    return new Promise((resolve) => {
+      if (!tabId) return resolve(null);
+      try {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          if (chrome.runtime.lastError) return resolve(null);
+          resolve(response || null);
+        });
+      } catch (_) {
+        resolve(null);
+      }
     });
   }
 
-  // Settings Drawer Toggle
+  // Runs an inspection/autofill action in every frame of the tab and merges results.
+  function sendAggregate(tabId, payload) {
+    return new Promise((resolve) => {
+      if (!tabId) return resolve(null);
+      try {
+        chrome.runtime.sendMessage({ type: "AGGREGATE", tabId, payload }, (response) => {
+          if (chrome.runtime.lastError) return resolve(null);
+          resolve(response || null);
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  function updateFooterLinks() {
+    const base = DASHBOARD_BASE.replace(/\/+$/, "");
+    if (openDashLink) openDashLink.href = base;
+    if (openAnswersLink) openAnswersLink.href = `${base}/answers`;
+    if (dashSettingsLink) dashSettingsLink.href = `${base}/settings`;
+  }
+
+  function getAuthHeaders() {
+    const headers = { "Content-Type": "application/json" };
+    if (context.deviceToken) headers["X-Device-Token"] = context.deviceToken;
+    return headers;
+  }
+
+  async function apiFetch(path, options = {}) {
+    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+    const response = await fetch(url, {
+      ...options,
+      headers: { ...getAuthHeaders(), ...(options.headers || {}) }
+    });
+
+    if (response.status === 401) {
+      chrome.storage.local.remove(STORAGE_KEYS);
+      context.deviceToken = null;
+      context.profile = null;
+      renderDisconnected();
+      showToast("Session expired. Please reconnect.", "error");
+      throw new Error("Device authorization expired.");
+    }
+    return response;
+  }
+
+  // ------------------------------------------------------------- rendering
+
+  function renderDisconnected() {
+    if (stateNotConnected) stateNotConnected.classList.remove("hidden");
+    if (stateConnected) stateConnected.classList.add("hidden");
+    if (stateSubmission) stateSubmission.classList.add("hidden");
+    if (connectionBadge) connectionBadge.className = "pill pill-offline";
+    if (connectionText) connectionText.textContent = "Offline";
+    if (userInfoFooter) userInfoFooter.textContent = "Not connected";
+  }
+
+  function renderConnected() {
+    if (stateNotConnected) stateNotConnected.classList.add("hidden");
+    if (stateConnected) stateConnected.classList.remove("hidden");
+    if (connectionBadge) connectionBadge.className = "pill pill-online";
+    if (connectionText) connectionText.textContent = "Connected";
+
+    const profile = context.profile;
+    if (userInfoFooter) {
+      const label = (profile && (profile.full_name || profile.email)) || "Connected";
+      userInfoFooter.textContent = label;
+      userInfoFooter.title = `Connected as ${label}`;
+    }
+  }
+
+  function setWebsiteStatus(state, text) {
+    if (websiteStatusText) websiteStatusText.textContent = text;
+    if (websiteStatusDot) {
+      websiteStatusDot.className = "dot " + (state === "ok" ? "dot-ok" : state === "warn" ? "dot-warn" : "dot-idle");
+    }
+  }
+
+  function setFillMode(mode, persist = true) {
+    fillMode = mode === "replace" ? "replace" : "safe";
+    if (fillModeToggle) {
+      Array.from(fillModeToggle.querySelectorAll(".seg-btn")).forEach((btn) => {
+        btn.classList.toggle("is-active", btn.dataset.mode === fillMode);
+      });
+    }
+    if (fillModeHint) {
+      fillModeHint.textContent = fillMode === "safe"
+        ? "Answers you already typed on the page are kept."
+        : "Existing values on the page will be overwritten.";
+    }
+    if (persist) chrome.storage.sync.set({ fill_mode: fillMode });
+  }
+
+  function paintTracked(label) {
+    if (startAppBtn) {
+      startAppBtn.textContent = "Tracked in dashboard";
+      startAppBtn.disabled = true;
+      startAppBtn.classList.add("hidden");
+    }
+    if (activeStatusBadge) {
+      activeStatusBadge.textContent = label || "Tracked";
+      activeStatusBadge.classList.remove("hidden");
+    }
+  }
+
+  function resetTracked() {
+    if (startAppBtn) {
+      startAppBtn.textContent = "Track this job manually";
+      startAppBtn.disabled = false;
+      startAppBtn.classList.remove("hidden");
+    }
+    if (activeStatusBadge) activeStatusBadge.classList.add("hidden");
+  }
+
+  function renderJob(job) {
+    if (!job || !job.company) {
+      if (jobCompanyEl) jobCompanyEl.textContent = "No job detected";
+      if (jobPositionEl) jobPositionEl.textContent = "Open a job posting or application form to begin.";
+      if (atsBadge) atsBadge.textContent = "Web page";
+      return;
+    }
+
+    if (jobCompanyEl) jobCompanyEl.textContent = job.company;
+    if (jobPositionEl) jobPositionEl.textContent = job.position || "Application form";
+    if (atsBadge) atsBadge.textContent = job.ats_platform || "Web page";
+
+    if (job.source && jobSourceEl) {
+      const label = jobSourceEl.querySelector("span");
+      if (label) label.textContent = job.source;
+    }
+
+    if (job.location) {
+      if (locationText) locationText.textContent = job.location;
+      if (jobLocationEl) jobLocationEl.classList.remove("hidden");
+    } else if (jobLocationEl) {
+      jobLocationEl.classList.add("hidden");
+    }
+  }
+
+  function renderFormSummary(count) {
+    if (!detectedCountEl) return;
+    if (count > 0) {
+      detectedCountEl.textContent = `${count} form field${count === 1 ? "" : "s"} found`;
+      if (autofillBtn) {
+        autofillBtn.disabled = false;
+        if (autofillLabel) autofillLabel.textContent = "Autofill this page";
+      }
+    } else {
+      detectedCountEl.textContent = "No form fields on this page";
+      if (autofillBtn) {
+        autofillBtn.disabled = true;
+        if (autofillLabel) autofillLabel.textContent = "Nothing to autofill here";
+      }
+    }
+  }
+
+  function renderDetectedQuestions() {
+    const fields = context.essayFields || [];
+    if (detectedQuestionsBadge) {
+      detectedQuestionsBadge.textContent = fields.length
+        ? `${fields.length} found`
+        : "None found";
+    }
+    if (!detectedQuestionsList) return;
+
+    detectedQuestionsList.innerHTML = "";
+    if (fields.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "q-empty";
+      empty.textContent = "No written questions detected on this page.";
+      detectedQuestionsList.appendChild(empty);
+      return;
+    }
+
+    fields.slice(0, 6).forEach((field) => {
+      const row = document.createElement("li");
+      row.className = "q-item";
+
+      const body = document.createElement("div");
+      body.className = "q-body";
+
+      const prompt = document.createElement("span");
+      prompt.className = "q-prompt";
+      prompt.textContent = field.prompt;
+      body.appendChild(prompt);
+
+      const answer = document.createElement("span");
+      answer.className = "q-answer";
+      answer.textContent = (field.currentValue || "").trim()
+        ? (field.currentValue || "").trim()
+        : "Not answered on this page yet";
+      body.appendChild(answer);
+      row.appendChild(body);
+
+      const action = document.createElement("button");
+      action.className = "btn btn-quiet btn-sm";
+      const alreadySaved = context.savedPrompts.has(field.prompt);
+      const hasAnswer = !!(field.currentValue || "").trim();
+      action.textContent = alreadySaved ? "Saved" : hasAnswer ? "Save" : "Write";
+      action.disabled = alreadySaved;
+      action.addEventListener("click", async () => {
+        if (hasAnswer) {
+          await saveDetectedAnswer(field, action);
+        } else {
+          openManualAnswer(field.prompt);
+        }
+      });
+      row.appendChild(action);
+
+      detectedQuestionsList.appendChild(row);
+    });
+  }
+
+  // -------------------------------------------------------- page inspection
+
+  async function inspectActiveTab({ allowAutoTrack = false } = {}) {
+    if (!activeTabId) return;
+
+    const jobResponse = await sendAggregate(activeTabId, { action: "job" });
+    const job = jobResponse && jobResponse.job ? jobResponse.job : null;
+    context.job = job;
+    renderJob(job);
+
+    if (context.application && job && context.application.company &&
+        (job.company || "").toLowerCase() === context.application.company.toLowerCase()) {
+      paintTracked("Tracked");
+    } else {
+      resetTracked();
+    }
+
+    const formResponse = await sendAggregate(activeTabId, { action: "inspect" });
+    if (formResponse) {
+      context.fields = formResponse.fields || [];
+      context.essayFields = formResponse.essayFields || [];
+    } else {
+      context.fields = [];
+      context.essayFields = [];
+    }
+    renderFormSummary(context.fields.length);
+    renderDetectedQuestions();
+
+    // Automatic tracking: only on pages that actually contain an application form.
+    if (allowAutoTrack && autoTrack && context.fields.length > 0 && !context.application) {
+      try {
+        await trackCurrentJob({ silent: true });
+      } catch (_) {}
+    }
+  }
+
+  // ------------------------------------------------------------- tracking
+
+  async function trackCurrentJob({ silent = false } = {}) {
+    if (context.application) return context.application;
+    if (!context.job || !context.job.company) {
+      if (!silent) showToast("No job detected on this page.", "error");
+      return null;
+    }
+
+    const response = await apiFetch("/applications", {
+      method: "POST",
+      body: JSON.stringify({
+        company: context.job.company,
+        position: context.job.position || "Role",
+        job_url: context.job.job_url,
+        source: context.job.source,
+        location: context.job.location,
+        employment_type: context.job.employment_type,
+        status: "Saved"
+      })
+    });
+
+    if (!response.ok) {
+      if (!silent) showToast("Could not save this job. Please retry.", "error");
+      return null;
+    }
+
+    const application = await response.json();
+    context.application = application;
+    if (tabAppKey) chrome.storage.local.set({ [tabAppKey]: application });
+    paintTracked(silent ? "Auto-tracked" : "Tracked");
+    if (!silent) showToast(`Saved ${application.company} to your dashboard.`);
+    return application;
+  }
+
+  // ------------------------------------------------------------- answers
+
+  function autoScopeFor(prompt) {
+    const company = context.job && context.job.company ? context.job.company : "";
+    if (company && prompt.toLowerCase().includes(company.toLowerCase())) return "company";
+    return "general";
+  }
+
+  async function saveDetectedAnswer(field, button) {
+    const scope = autoScopeFor(field.prompt);
+    const company = context.job ? context.job.company : null;
+    const role = context.job ? context.job.position : null;
+
+    button.disabled = true;
+    button.textContent = "Saving…";
+
+    try {
+      const response = await apiFetch("/answers", {
+        method: "POST",
+        body: JSON.stringify({
+          question: field.prompt,
+          answer: (field.currentValue || "").trim(),
+          scope,
+          company: scope === "company" ? company : null,
+          role: scope === "application" ? role : null,
+          tags: scope
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || "Could not save answer.");
+      }
+
+      context.savedPrompts.add(field.prompt);
+      button.textContent = "Saved";
+      showToast(scope === "company" ? "Saved for this company." : "Saved for any application.");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Save";
+      showToast(error.message || "Could not save answer.", "error");
+    }
+  }
+
+  function openManualAnswer(prompt = "") {
+    if (manualAnswerPanel) manualAnswerPanel.classList.remove("hidden");
+    if (newQInput) {
+      newQInput.value = prompt;
+      newQInput.focus();
+    }
+  }
+
+  // ------------------------------------------------------------ connection
+
+  async function findWebsiteToken() {
+    const tabs = await chrome.tabs.query({});
+    const dashTabs = tabs.filter((tab) => tab.url && DASHBOARD_URL_MATCHERS.some((m) => tab.url.includes(m)));
+    if (dashTabs.length === 0) return { token: null, reason: "no_tab", tab: null };
+
+    for (const tab of dashTabs) {
+      try {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => localStorage.getItem("applyrecall_token")
+        });
+        if (result && result.result) return { token: result.result, reason: "ok", tab };
+      } catch (_) {}
+    }
+    return { token: null, reason: "not_signed_in", tab: dashTabs[0] };
+  }
+
+  async function detectWebsiteSession() {
+    setWebsiteStatus("idle", "Checking for a signed-in ApplyRecall tab…");
+    try {
+      const { token, reason } = await findWebsiteToken();
+      if (token) {
+        context.websiteToken = token;
+        setWebsiteStatus("ok", "Signed in on your ApplyRecall tab — ready to connect.");
+      } else if (reason === "no_tab") {
+        setWebsiteStatus("warn", "No ApplyRecall tab open — we'll open it for you.");
+      } else {
+        setWebsiteStatus("warn", "Your ApplyRecall tab is not signed in yet.");
+      }
+    } catch (_) {
+      setWebsiteStatus("warn", "Could not check the website session.");
+    }
+  }
+
+  async function finishConnection(token, profile) {
+    context.deviceToken = token;
+    context.profile = profile || null;
+    chrome.storage.local.set({ device_token: token, user_profile: profile || null });
+    renderConnected();
+    await inspectActiveTab({ allowAutoTrack: true });
+  }
+
+  async function connectAutomatically() {
+    if (!syncWebsiteBtn) return;
+    const labelEl = syncWebsiteBtn.querySelector(".btn-label");
+    const setLabel = (text) => { if (labelEl) labelEl.textContent = text; };
+
+    setLabel("Connecting…");
+    syncWebsiteBtn.disabled = true;
+
+    try {
+      let token = context.websiteToken;
+      if (!token) {
+        const found = await findWebsiteToken();
+        token = found.token;
+        if (!token) {
+          if (found.reason === "no_tab") {
+            showToast("Opening ApplyRecall — log in, then press Connect again.");
+            chrome.tabs.create({ url: `${DASHBOARD_BASE}/login` });
+          } else {
+            showToast("Please log in to ApplyRecall in your browser tab.", "error");
+            if (found.tab) chrome.tabs.update(found.tab.id, { active: true });
+          }
+          return;
+        }
+      }
+
+      const siteHeaders = { "Content-Type": "application/json" };
+      if (token.startsWith("eyJ")) siteHeaders["Authorization"] = `Bearer ${token}`;
+      else siteHeaders["X-Device-Token"] = token;
+
+      const generateResponse = await fetch(`${API_BASE}/auth/pair/generate`, {
+        method: "POST",
+        headers: siteHeaders,
+        body: JSON.stringify({ device_type: "extension" })
+      });
+
+      if (!generateResponse.ok) {
+        throw new Error("Could not read your website login. Use the pairing code instead.");
+      }
+
+      const { code } = await generateResponse.json();
+      const verifyResponse = await fetch(`${API_BASE}/auth/pair/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, device_type: "extension", device_name: "Chrome Browser Extension" })
+      });
+
+      if (!verifyResponse.ok) throw new Error("Linking failed. Please try the pairing code.");
+
+      const verifyData = await verifyResponse.json();
+      await finishConnection(verifyData.token, verifyData.profile);
+      showToast("Connected to your ApplyRecall account.");
+    } catch (error) {
+      showToast(error.message || "Could not connect automatically.", "error");
+    } finally {
+      setLabel("Connect automatically");
+      syncWebsiteBtn.disabled = false;
+    }
+  }
+
+  async function connectWithCode() {
+    const code = (pairingCodeInput ? pairingCodeInput.value : "").trim().toUpperCase();
+    if (!code || code.length !== 6) {
+      showToast("Enter the 6-character code from your dashboard.", "error");
+      return;
+    }
+
+    const labelEl = connectBtn ? connectBtn.querySelector(".btn-label") : null;
+    if (labelEl) labelEl.textContent = "Verifying…";
+    if (connectBtn) connectBtn.disabled = true;
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/pair/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, device_type: "extension", device_name: "Chrome Browser" })
+      });
+
+      if (!response.ok) {
+        let message = "That code did not work. Generate a new one and retry.";
+        try {
+          const err = await response.json();
+          if (err && err.detail) message = err.detail;
+        } catch (_) {
+          if (response.status === 502 || response.status === 503) {
+            message = "Server is starting up. Retry in 10 seconds.";
+          }
+        }
+        throw new Error(message);
+      }
+
+      const data = await response.json();
+      await finishConnection(data.token, data.profile);
+      showToast("Extension paired successfully.");
+    } catch (error) {
+      showToast(error.message, "error");
+    } finally {
+      if (labelEl) labelEl.textContent = "Pair with code";
+      if (connectBtn) connectBtn.disabled = false;
+    }
+  }
+
+  // --------------------------------------------------------------- autofill
+
+  async function runAutofill() {
+    await ready;
+    if (!context.profile) {
+      showToast("Connect your account first.", "error");
+      return;
+    }
+    if (!activeTabId) {
+      showToast("No active browser tab found.", "error");
+      return;
+    }
+
+    if (autofillLabel) autofillLabel.textContent = "Autofilling…";
+    autofillBtn.disabled = true;
+
+    try {
+      const company = context.job ? context.job.company : "";
+      const role = context.job ? context.job.position : "";
+      const matchedAnswers = [];
+
+      for (const field of context.fields) {
+        if (!field.isLongText || !field.prompt) continue;
+        try {
+          const response = await apiFetch("/answers/match", {
+            method: "POST",
+            body: JSON.stringify({ question: field.prompt, company, role })
+          });
+          if (!response.ok) continue;
+          const match = await response.json();
+          if (match.matched && match.answer) {
+            matchedAnswers.push({
+              fieldId: field.id,
+              fieldName: field.name,
+              prompt: field.prompt,
+              questionTitle: match.answer.question,
+              answerText: match.answer.answer
+            });
+          }
+        } catch (_) {}
+      }
+
+      // Repeated blocks (one per job, school or project) need the saved entries, not just the profile row.
+      let experiences = context.experiences || [];
+      let projects = context.projects || [];
+      try {
+        const profileResponse = await apiFetch("/profile");
+        if (profileResponse.ok) {
+          const data = await profileResponse.json();
+          if (Array.isArray(data.experiences)) {
+            experiences = data.experiences;
+            context.experiences = experiences;
+          }
+          if (Array.isArray(data.projects)) {
+            projects = data.projects;
+            context.projects = projects;
+          }
+        }
+      } catch (_) {}
+
+      const result = await sendAggregate(activeTabId, {
+        action: "fill",
+        profile: context.profile,
+        matchedAnswers,
+        experiences,
+        projects,
+        forceOverwrite: fillMode === "replace"
+      });
+
+      if (!result) {
+        showToast("Could not reach this page. Reload the tab and retry.", "error");
+        return;
+      }
+
+      renderAutofillResult(result);
+    } catch (error) {
+      showToast("Autofill failed: " + (error.message || "unknown error"), "error");
+    } finally {
+      if (autofillLabel) autofillLabel.textContent = "Autofill this page";
+      autofillBtn.disabled = context.fields.length === 0;
+    }
+  }
+
+  function renderAutofillResult(result) {
+    if (!resultsPanel) return;
+    resultsPanel.classList.remove("hidden");
+
+    const filled = result.filledCount || 0;
+    const skipped = result.skippedCount || 0;
+    const skippedNote = skipped > 0 ? ` · ${skipped} kept` : "";
+
+    if (resultsCountBadge) resultsCountBadge.textContent = `${filled} filled${skippedNote}`;
+    if (resultsText) {
+      resultsText.textContent = filled > 0 ? "Fields written on this page" : "Nothing was written";
+    }
+
+    if (filledList) {
+      filledList.innerHTML = "";
+      (result.filledDetails || []).forEach((item) => {
+        const li = document.createElement("li");
+        const label = document.createElement("span");
+        label.className = "f-label";
+        const tick = document.createElement("span");
+        tick.className = "ok";
+        tick.textContent = "✓";
+        const name = document.createElement("span");
+        name.textContent = item.label || "Field";
+        label.append(tick, name);
+
+        const value = document.createElement("span");
+        value.className = "f-value";
+        const text = String(item.value || "");
+        value.textContent = text.length > 26 ? text.slice(0, 24) + "…" : text;
+        value.title = text;
+
+        li.append(label, value);
+        filledList.appendChild(li);
+      });
+
+      (result.skippedDetails || []).forEach((item) => {
+        const li = document.createElement("li");
+        const label = document.createElement("span");
+        label.className = "f-label";
+        label.textContent = `• ${item.label || "Field"}`;
+        const value = document.createElement("span");
+        value.className = "f-value";
+        value.textContent = "kept";
+        li.append(label, value);
+        filledList.appendChild(li);
+      });
+    }
+
+    if (filled > 0) showToast(`Filled ${filled} field${filled === 1 ? "" : "s"} on this page.`);
+    else if (skipped > 0) showToast("Every field already had a value, so nothing changed.");
+    else showToast("No matching fields found on this page.", "error");
+  }
+
+  // ------------------------------------------------------------- submission
+
+  async function markApplied() {
+    await ready;
+    if (!context.application) {
+      const company = context.job && context.job.company ? context.job.company : "Target company";
+      const position = context.job && context.job.position ? context.job.position : "Role";
+      const created = await apiFetch("/applications", {
+        method: "POST",
+        body: JSON.stringify({ company, position, status: "Saved" })
+      });
+      if (!created.ok) {
+        showToast("Could not save this application.", "error");
+        return;
+      }
+      context.application = await created.json();
+    }
+
+    if (!context.application) return;
+
+    try {
+      confirmAppliedBtn.disabled = true;
+      confirmAppliedBtn.textContent = "Saving…";
+      const response = await apiFetch(`/applications/${context.application.id}/confirm-applied`, {
+        method: "POST",
+        body: JSON.stringify({
+          create_reminder: reminderCheck ? reminderCheck.checked : true,
+          reminder_days: 7
+        })
+      });
+
+      if (!response.ok) throw new Error();
+
+      if (stateSubmission) stateSubmission.classList.add("hidden");
+      if (tabSubmitKey) chrome.storage.local.remove([tabSubmitKey]);
+      chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG", tabId: activeTabId });
+      await trackCurrentJob({ silent: true });
+      showToast("Marked as applied. Follow-up reminder is set.");
+    } catch (_) {
+      showToast("Could not confirm this application.", "error");
+    } finally {
+      confirmAppliedBtn.disabled = false;
+      confirmAppliedBtn.textContent = "Mark as applied";
+    }
+  }
+
+  // Register handlers first so the popup is usable while it loads.
+  attachEvents();
+
+  // -------------------------------------------------------------- bootstrap
+
+  const config = await chrome.storage.sync.get(SETTING_KEYS);
+  if (config.api_base_url) API_BASE = config.api_base_url;
+  if (config.dashboard_base_url) DASHBOARD_BASE = config.dashboard_base_url;
+  if (apiUrlInput) apiUrlInput.value = API_BASE;
+  if (dashboardUrlInput) dashboardUrlInput.value = DASHBOARD_BASE;
+  updateFooterLinks();
+
+  if (autoTrackCheck) {
+    autoTrack = config.auto_track !== false;
+    autoTrackCheck.checked = autoTrack;
+  }
+  setFillMode(config.fill_mode || "safe", false);
+
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const activeTab = tabs && tabs[0] ? tabs[0] : null;
+  if (activeTab) activeTabId = activeTab.id;
+  tabAppKey = activeTabId ? `tab_${activeTabId}_application` : "active_application";
+  tabSubmitKey = activeTabId ? `tab_${activeTabId}_submission_pending` : "submission_pending";
+
+  const stored = await chrome.storage.local.get([...STORAGE_KEYS, tabAppKey, tabSubmitKey]);
+
+  if (stored.device_token) {
+    context.deviceToken = stored.device_token;
+    context.profile = stored.user_profile || null;
+    context.application = stored[tabAppKey] || null;
+    renderConnected();
+    if (stored[tabSubmitKey] && stateSubmission) stateSubmission.classList.remove("hidden");
+    await inspectActiveTab({ allowAutoTrack: true });
+
+    // Refresh the cached profile in the background.
+    try {
+      const response = await apiFetch("/profile");
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.profile) {
+          context.profile = data.profile;
+          chrome.storage.local.set({ user_profile: data.profile });
+          renderConnected();
+        }
+      }
+    } catch (_) {}
+  } else {
+    renderDisconnected();
+    await detectWebsiteSession();
+  }
+
+  if (resolveReady) resolveReady();
+
+  // ---------------------------------------------------------------- events
+
+  function attachEvents() {
+  if (pairingCodeInput) {
+    pairingCodeInput.addEventListener("input", (event) => {
+      event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (event.target.value.length === 6) connectWithCode();
+    });
+  }
+
+  if (toggleManualPairBtn) {
+    toggleManualPairBtn.addEventListener("click", () => {
+      const hidden = manualPairPanel.classList.toggle("hidden");
+      toggleManualPairBtn.textContent = hidden
+        ? "Have a pairing code instead?"
+        : "Hide pairing code";
+      if (!hidden && pairingCodeInput) pairingCodeInput.focus();
+    });
+  }
+
+  if (toggleManualAnswerBtn) {
+    toggleManualAnswerBtn.addEventListener("click", () => {
+      const hidden = manualAnswerPanel.classList.toggle("hidden");
+      toggleManualAnswerBtn.textContent = hidden ? "Add an answer manually" : "Hide manual entry";
+      if (!hidden && newQInput) newQInput.focus();
+    });
+  }
+
   if (toggleSettingsBtn && settingsDrawer) {
     toggleSettingsBtn.addEventListener("click", () => {
       settingsDrawer.classList.toggle("hidden");
@@ -117,649 +894,147 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (closeSettingsBtn && settingsDrawer) {
-    closeSettingsBtn.addEventListener("click", () => {
-      settingsDrawer.classList.add("hidden");
+    closeSettingsBtn.addEventListener("click", () => settingsDrawer.classList.add("hidden"));
+  }
+
+  function persistServerConfig(apiBase, dashboardBase, message) {
+    API_BASE = apiBase;
+    DASHBOARD_BASE = dashboardBase;
+    if (apiUrlInput) apiUrlInput.value = apiBase;
+    if (dashboardUrlInput) dashboardUrlInput.value = dashboardBase;
+    chrome.storage.sync.set({ api_base_url: apiBase, dashboard_base_url: dashboardBase }, () => {
+      updateFooterLinks();
+      if (settingsDrawer) settingsDrawer.classList.add("hidden");
+      showToast(message);
     });
   }
 
-  // Save Settings
   if (saveApiUrlBtn) {
     saveApiUrlBtn.addEventListener("click", () => {
-      const apiVal = apiUrlInput ? apiUrlInput.value.trim().replace(/\/+$/, "") : "";
-      const dashVal = dashboardUrlInput ? dashboardUrlInput.value.trim().replace(/\/+$/, "") : "";
-
-      if (apiVal) {
-        if (!apiVal.startsWith("https://") && !apiVal.startsWith("http://localhost") && !apiVal.startsWith("http://127.0.0.1")) {
-          showToast("Production API URL must use HTTPS.", "error");
-          return;
-        }
-        API_BASE = apiVal;
+      const apiValue = apiUrlInput ? apiUrlInput.value.trim().replace(/\/+$/, "") : "";
+      const dashValue = dashboardUrlInput ? dashboardUrlInput.value.trim().replace(/\/+$/, "") : "";
+      if (apiValue && !apiValue.startsWith("https://") &&
+          !apiValue.startsWith("http://localhost") && !apiValue.startsWith("http://127.0.0.1")) {
+        showToast("Use HTTPS for remote servers, or localhost for local development.", "error");
+        return;
       }
-      if (dashVal) {
-        DASHBOARD_BASE = dashVal;
-      }
-
-      chrome.storage.sync.set({ api_base_url: API_BASE, dashboard_base_url: DASHBOARD_BASE }, () => {
-        updateFooterLinks();
-        if (settingsDrawer) settingsDrawer.classList.add("hidden");
-        showToast("Server configuration updated.");
-      });
+      persistServerConfig(apiValue || API_BASE, dashValue || DASHBOARD_BASE, "Connection settings saved.");
     });
   }
 
-  // Preset Buttons
   if (resetProdUrlBtn) {
-    resetProdUrlBtn.addEventListener("click", () => {
-      API_BASE = PROD_API_BASE;
-      DASHBOARD_BASE = PROD_DASHBOARD_BASE;
-      if (apiUrlInput) apiUrlInput.value = API_BASE;
-      if (dashboardUrlInput) dashboardUrlInput.value = DASHBOARD_BASE;
-      chrome.storage.sync.set({ api_base_url: API_BASE, dashboard_base_url: DASHBOARD_BASE }, () => {
-        updateFooterLinks();
-        if (settingsDrawer) settingsDrawer.classList.add("hidden");
-        showToast("Switched to Production Cloud.");
-      });
-    });
+    resetProdUrlBtn.addEventListener("click", () =>
+      persistServerConfig(PROD_API_BASE, PROD_DASHBOARD_BASE, "Switched to the cloud server."));
   }
 
   if (resetDevUrlBtn) {
-    resetDevUrlBtn.addEventListener("click", () => {
-      API_BASE = DEV_API_BASE;
-      DASHBOARD_BASE = DEV_DASHBOARD_BASE;
-      if (apiUrlInput) apiUrlInput.value = API_BASE;
-      if (dashboardUrlInput) dashboardUrlInput.value = DASHBOARD_BASE;
-      chrome.storage.sync.set({ api_base_url: API_BASE, dashboard_base_url: DASHBOARD_BASE }, () => {
-        updateFooterLinks();
-        if (settingsDrawer) settingsDrawer.classList.add("hidden");
-        showToast("Switched to Localhost Dev.");
-      });
-    });
+    resetDevUrlBtn.addEventListener("click", () =>
+      persistServerConfig(DEV_API_BASE, DEV_DASHBOARD_BASE, "Switched to localhost."));
   }
 
-  // Load configured API & Dashboard URLs
-  chrome.storage.sync.get(["api_base_url", "dashboard_base_url"], (cfg) => {
-    if (cfg && cfg.api_base_url) API_BASE = cfg.api_base_url;
-    if (cfg && cfg.dashboard_base_url) DASHBOARD_BASE = cfg.dashboard_base_url;
-    if (apiUrlInput) apiUrlInput.value = API_BASE;
-    if (dashboardUrlInput) dashboardUrlInput.value = DASHBOARD_BASE;
-    updateFooterLinks();
-  });
+  if (syncWebsiteBtn) syncWebsiteBtn.addEventListener("click", connectAutomatically);
+  if (connectBtn) connectBtn.addEventListener("click", connectWithCode);
 
-  // Query Current Active Tab
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (activeTab) {
-    activeTabId = activeTab.id;
-  }
-
-  const tabAppKey = activeTabId ? `tab_${activeTabId}_application` : "active_application";
-  const tabSubmitKey = activeTabId ? `tab_${activeTabId}_submission_pending` : "submission_pending";
-
-  // API Fetch with device token & 401 handling
-  function getAuthHeaders() {
-    const headers = { "Content-Type": "application/json" };
-    if (currentContext.deviceToken) {
-      headers["X-Device-Token"] = currentContext.deviceToken;
-    }
-    return headers;
-  }
-
-  async function apiFetch(path, options = {}) {
-    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
-    const headers = {
-      ...getAuthHeaders(),
-      ...(options.headers || {})
-    };
-
-    const resp = await fetch(url, { ...options, headers });
-
-    if (resp.status === 401) {
-      chrome.storage.local.remove(["device_token", "user_profile"]);
-      currentContext.deviceToken = null;
-      currentContext.profile = null;
-      renderDisconnectedState();
-      showToast("Device session expired or revoked. Please reconnect.", "error");
-      throw new Error("Device authorization expired (401).");
-    }
-
-    return resp;
-  }
-
-  // Render Connected Workspace
-  function renderConnectedState() {
-    stateNotConnected.classList.add("hidden");
-    stateConnected.classList.remove("hidden");
-    connectionBadge.className = "status-pill status-pill-connected";
-    connectionText.textContent = "Connected";
-
-    if (currentContext.profile) {
-      const displayName = currentContext.profile.full_name || currentContext.profile.email || "ApplyRecall Student";
-      userInfoFooter.textContent = displayName;
-      userInfoFooter.title = `Connected as ${displayName}`;
-    }
-  }
-
-  // Render Disconnected State
-  function renderDisconnectedState() {
-    stateNotConnected.classList.remove("hidden");
-    stateConnected.classList.add("hidden");
-    stateSubmission.classList.add("hidden");
-    connectionBadge.className = "status-pill status-pill-offline";
-    connectionText.textContent = "Offline";
-    userInfoFooter.textContent = "ApplyRecall MVP";
-  }
-
-  // Inspect Active Tab for Job Context and Form Fields
-  async function inspectActiveTab() {
-    if (!activeTabId) return;
-
-    try {
-      // 1. Extract Job Context
-      chrome.tabs.sendMessage(activeTabId, { action: "GET_JOB_CONTEXT" }, (response) => {
-        if (chrome.runtime.lastError || !response || !response.job) {
-          jobCompanyEl.textContent = "No Job Detected";
-          jobPositionEl.textContent = "Open a job application page to begin.";
-          atsBadge.textContent = "Web Page";
-          return;
-        }
-
-        const job = response.job;
-        currentContext.job = job;
-
-        jobCompanyEl.textContent = job.company || "Job Listing";
-        jobPositionEl.textContent = job.position || "Application Form";
-        atsBadge.textContent = job.ats_platform || "Web Listing";
-
-        if (job.source) {
-          jobSourceEl.querySelector("span").textContent = job.source;
-        }
-
-        if (job.location) {
-          locationText.textContent = job.location;
-          jobLocationEl.classList.remove("hidden");
-        } else {
-          jobLocationEl.classList.add("hidden");
-        }
-
-        // Check if application is already tracked
-        if (currentContext.application && currentContext.application.company &&
-            currentContext.application.company.toLowerCase() === (job.company || "").toLowerCase()) {
-          startAppBtn.innerHTML = `<span>✓ Tracked in Dashboard</span>`;
-          startAppBtn.disabled = true;
-          startAppBtn.className = "btn btn-sm btn-ghost btn-full";
-          activeStatusBadge.textContent = "Tracked";
-          activeStatusBadge.className = "badge badge-success";
-        }
-      });
-
-      // 2. Inspect Form Fields
-      chrome.tabs.sendMessage(activeTabId, { action: "INSPECT_FORM" }, (response) => {
-        if (!chrome.runtime.lastError && response && response.fields) {
-          currentContext.fields = response.fields;
-          currentContext.essayFields = response.essayFields || [];
-
-          const count = response.count || 0;
-          detectedCountEl.textContent = count > 0 ? `${count} fields detected` : "No fields found";
-          detectedCountEl.className = count > 0 ? "badge badge-blue" : "badge badge-neutral";
-
-          // If essay question found, pre-populate quick-save assistant
-          if (currentContext.essayFields.length > 0) {
-            const firstEssay = currentContext.essayFields[0];
-            if (!newQInput.value && firstEssay.prompt) {
-              newQInput.value = firstEssay.prompt;
-              if (firstEssay.currentValue) {
-                newAInput.value = firstEssay.currentValue;
-              }
-            }
-          }
-        } else {
-          detectedCountEl.textContent = "No form fields";
-          detectedCountEl.className = "badge badge-neutral";
-        }
-      });
-    } catch (e) {
-      console.warn("Active tab inspection error:", e);
-    }
-  }
-
-  // Load storage state on startup
-  chrome.storage.local.get(
-    ["device_token", "user_profile", tabAppKey, tabSubmitKey],
-    async (res) => {
-      if (res.device_token) {
-        currentContext.deviceToken = res.device_token;
-        currentContext.profile = res.user_profile;
-        currentContext.application = res[tabAppKey] || null;
-
-        renderConnectedState();
-
-        if (res[tabSubmitKey]) {
-          stateSubmission.classList.remove("hidden");
-        }
-
-        await inspectActiveTab();
-
-        // Background Profile Sync: Silently refresh user profile from backend
-        try {
-          const profResp = await apiFetch("/profile");
-          if (profResp.ok) {
-            const profData = await profResp.json();
-            if (profData && profData.profile) {
-              currentContext.profile = profData.profile;
-              chrome.storage.local.set({ user_profile: profData.profile });
-              renderConnectedState();
-            }
-          }
-        } catch (_) {}
-      } else {
-        renderDisconnectedState();
-      }
-    }
-  );
-
-  // Manual Re-scan Button
   if (rescanBtn) {
     rescanBtn.addEventListener("click", async () => {
-      detectedCountEl.textContent = "Re-scanning...";
+      if (detectedCountEl) detectedCountEl.textContent = "Scanning…";
       await inspectActiveTab();
-      showToast("Form fields re-scanned.");
+      showToast("Page scanned again.");
     });
   }
 
-  // Connect Button handler (Pairing with backend)
-  connectBtn.addEventListener("click", async () => {
-    const code = pairingCodeInput.value.trim().toUpperCase();
-    if (!code || code.length !== 6) {
-      showToast("Please enter your 6-character code.", "error");
-      return;
-    }
+  if (fillModeToggle) {
+    fillModeToggle.addEventListener("click", (event) => {
+      const btn = event.target.closest(".seg-btn");
+      if (btn && btn.dataset.mode) setFillMode(btn.dataset.mode);
+    });
+  }
 
-    try {
-      connectBtn.textContent = "Verifying Code...";
-      connectBtn.disabled = true;
+  if (autoTrackCheck) {
+    autoTrackCheck.addEventListener("change", () => {
+      autoTrack = autoTrackCheck.checked;
+      chrome.storage.sync.set({ auto_track: autoTrack });
+      showToast(autoTrack ? "Pages with forms will be tracked automatically." : "Automatic tracking turned off.");
+    });
+  }
 
-      const resp = await fetch(`${API_BASE}/auth/pair/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: code,
-          device_type: "extension",
-          device_name: "Chrome Browser"
-        })
-      });
-
-      if (!resp.ok) {
-        let msg = "Pairing failed. Check the code.";
-        try {
-          const err = await resp.json();
-          if (err && err.detail) msg = err.detail;
-        } catch (_) {
-          if (resp.status === 502 || resp.status === 503) {
-            msg = "Server is starting up. Please retry in 10 seconds.";
-          } else if (resp.status === 500) {
-            msg = "Server error occurred. Please try generating a new code.";
-          }
-        }
-        throw new Error(msg);
-      }
-
-      const data = await resp.json();
-      currentContext.deviceToken = data.token;
-      currentContext.profile = data.profile;
-
-      chrome.storage.local.set({
-        device_token: data.token,
-        user_profile: data.profile
-      });
-
-      renderConnectedState();
-      showToast("Extension linked successfully!");
-      await inspectActiveTab();
-    } catch (err) {
-      showToast(err.message, "error");
-    } finally {
-      connectBtn.textContent = "Connect Extension";
-      connectBtn.disabled = false;
-    }
-  });
-
-  // Sync from Active Website Login
-  if (syncWebsiteBtn) {
-    syncWebsiteBtn.addEventListener("click", async () => {
-      try {
-        syncWebsiteBtn.textContent = "Checking Website Session...";
-        syncWebsiteBtn.disabled = true;
-
-        // Query open tabs for ApplyRecall dashboard
-        const tabs = await chrome.tabs.query({});
-        const dashTabs = tabs.filter(t => t.url && (
-          t.url.includes("localhost:3000") ||
-          t.url.includes("127.0.0.1:3000") ||
-          t.url.includes("applyrecall.vercel.app") ||
-          t.url.includes("applyrecall.onrender.com")
-        ));
-
-        if (dashTabs.length === 0) {
-          showToast("Opening ApplyRecall website to log in...", "error");
-          chrome.tabs.create({ url: `${DASHBOARD_BASE}/login` });
-          return;
-        }
-
-        // Check if user is logged into the open website tab
-        let foundToken = null;
-        for (const tab of dashTabs) {
-          try {
-            const [res] = await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              func: () => localStorage.getItem("applyrecall_token")
-            });
-            if (res && res.result) {
-              foundToken = res.result;
-              break;
-            }
-          } catch (_) {}
-        }
-
-        if (!foundToken) {
-          showToast("Please log in to ApplyRecall in your browser first.", "error");
-          chrome.tabs.update(dashTabs[0].id, { active: true });
-          return;
-        }
-
-        // Use active website token to link extension
-        const headers = { "Content-Type": "application/json" };
-        if (foundToken.startsWith("eyJ")) {
-          headers["Authorization"] = `Bearer ${foundToken}`;
-        } else {
-          headers["X-Device-Token"] = foundToken;
-        }
-
-        const genResp = await fetch(`${API_BASE}/auth/pair/generate`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ device_type: "extension" })
-        });
-
-        if (!genResp.ok) {
-          throw new Error("Could not link with website session. Please enter the pairing code from Settings.");
-        }
-
-        const genData = await genResp.json();
-        const verifyResp = await fetch(`${API_BASE}/auth/pair/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code: genData.code,
-            device_type: "extension",
-            device_name: "Chrome Browser Extension"
-          })
-        });
-
-        if (!verifyResp.ok) {
-          throw new Error("Extension pairing verification failed.");
-        }
-
-        const verifyData = await verifyResp.json();
-        currentContext.deviceToken = verifyData.token;
-        currentContext.profile = verifyData.profile;
-
-        chrome.storage.local.set({
-          device_token: verifyData.token,
-          user_profile: verifyData.profile
-        });
-
-        renderConnectedState();
-        showToast("Connected to your logged-in ApplyRecall account!");
-        await inspectActiveTab();
-      } catch (err) {
-        showToast(err.message || "Failed to link from website.", "error");
-      } finally {
-        syncWebsiteBtn.textContent = "✨ Sync from Active Website Login";
-        syncWebsiteBtn.disabled = false;
+  if (startAppBtn) {
+    startAppBtn.addEventListener("click", async () => {
+      await ready;
+      startAppBtn.disabled = true;
+      startAppBtn.textContent = "Saving…";
+      const app = await trackCurrentJob({ silent: false });
+      if (!app) {
+        startAppBtn.disabled = false;
+        startAppBtn.textContent = "Track this job manually";
+        startAppBtn.classList.remove("hidden");
       }
     });
   }
 
-  // Track Application in Dashboard
-  startAppBtn.addEventListener("click", async () => {
-    if (!currentContext.job || !currentContext.job.company) {
-      showToast("No active job detected on this page.", "error");
-      return;
-    }
+  if (autofillBtn) autofillBtn.addEventListener("click", runAutofill);
 
-    try {
-      startAppBtn.textContent = "Tracking Application...";
-      const resp = await apiFetch("/applications", {
-        method: "POST",
-        body: JSON.stringify({
-          company: currentContext.job.company,
-          position: currentContext.job.position,
-          job_url: currentContext.job.job_url,
-          source: currentContext.job.source,
-          location: currentContext.job.location,
-          employment_type: currentContext.job.employment_type,
-          status: "Saved"
-        })
-      });
+  if (saveAnswerBtn) {
+    saveAnswerBtn.addEventListener("click", async () => {
+      await ready;
+      const question = newQInput ? newQInput.value.trim() : "";
+      const answer = newAInput ? newAInput.value.trim() : "";
+      const scope = newScopeSelect ? newScopeSelect.value : "general";
+      const company = context.job ? context.job.company : null;
+      const role = context.job ? context.job.position : null;
 
-      if (resp.ok) {
-        const app = await resp.json();
-        currentContext.application = app;
-
-        const storageUpdate = {};
-        storageUpdate[tabAppKey] = app;
-        chrome.storage.local.set(storageUpdate);
-
-        startAppBtn.innerHTML = `<span>✓ Tracked in Dashboard</span>`;
-        startAppBtn.disabled = true;
-        startAppBtn.className = "btn btn-sm btn-ghost btn-full";
-        activeStatusBadge.textContent = "Tracked";
-        activeStatusBadge.className = "badge badge-success";
-        showToast(`Opportunity saved for ${app.company}.`);
+      if (!question || !answer) {
+        showToast("Add both a question and an answer.", "error");
+        return;
       }
-    } catch (e) {
-      showToast("Failed to save application context.", "error");
-    }
-  });
-
-  // Execute Intelligent Autofill
-  autofillBtn.addEventListener("click", async () => {
-    if (!currentContext.profile) {
-      showToast("Please connect your account first.", "error");
-      return;
-    }
-    if (!activeTabId) {
-      showToast("No active browser tab found.", "error");
-      return;
-    }
-
-    autofillBtn.textContent = "Autofilling...";
-    autofillBtn.disabled = true;
-
-    try {
-      // 1. Query Answer Library for essay/open-ended questions
-      const matchedAnswers = [];
-      const company = currentContext.job ? currentContext.job.company : "";
-      const role = currentContext.job ? currentContext.job.position : "";
-
-      for (const field of currentContext.fields) {
-        if (field.isLongText && field.prompt) {
-          try {
-            const matchResp = await apiFetch("/answers/match", {
-              method: "POST",
-              body: JSON.stringify({
-                question: field.prompt,
-                company: company,
-                role: role
-              })
-            });
-
-            if (matchResp.ok) {
-              const matchData = await matchResp.json();
-              if (matchData.matched && matchData.answer) {
-                matchedAnswers.push({
-                  fieldId: field.id,
-                  fieldName: field.name,
-                  prompt: field.prompt,
-                  questionTitle: matchData.answer.question,
-                  answerText: matchData.answer.answer
-                });
-              }
-            }
-          } catch (_) {}
-        }
+      if (scope === "company" && !company) {
+        showToast("Open the company's application page to save a company answer.", "error");
+        return;
       }
 
-      // 2. Dispatch EXECUTE_AUTOFILL to Content Script
-      const safeMode = safeModeCheck ? safeModeCheck.checked : true;
-
-      chrome.tabs.sendMessage(
-        activeTabId,
-        {
-          action: "EXECUTE_AUTOFILL",
-          profile: currentContext.profile,
-          matchedAnswers: matchedAnswers,
-          forceOverwrite: !safeMode
-        },
-        (result) => {
-          if (!chrome.runtime.lastError && result) {
-            resultsPanel.classList.remove("hidden");
-            const skipNote = result.skippedCount > 0 ? ` (${result.skippedCount} preserved)` : "";
-            resultsCountBadge.textContent = `${result.filledCount} Filled${skipNote}`;
-            filledList.innerHTML = "";
-
-            if (result.filledDetails && result.filledDetails.length > 0) {
-              result.filledDetails.forEach((item) => {
-                const li = document.createElement("li");
-                const previewVal = String(item.value).length > 24 ? String(item.value).substring(0, 22) + "…" : String(item.value);
-                li.innerHTML = `<span><strong>✓</strong> ${item.label}</span><span class="text-muted text-xs">${previewVal}</span>`;
-                filledList.appendChild(li);
-              });
-            }
-
-            if (result.skippedDetails && result.skippedDetails.length > 0) {
-              result.skippedDetails.forEach((item) => {
-                const li = document.createElement("li");
-                li.innerHTML = `<span class="text-muted">• ${item.label}</span><span class="text-muted text-xs">preserved</span>`;
-                filledList.appendChild(li);
-              });
-            }
-
-            if (result.filledCount > 0) {
-              showToast(`Populated ${result.filledCount} fields cleanly.`);
-            } else if (result.skippedCount > 0) {
-              showToast(`All fields already contained values (preserved in safe mode).`);
-            } else {
-              showToast(`No matching empty fields on this page.`);
-            }
-          } else {
-            showToast("Could not autofill this page. Try refreshing the tab.", "error");
-          }
-        }
-      );
-    } catch (err) {
-      showToast("Autofill error: " + err.message, "error");
-    } finally {
-      autofillBtn.innerHTML = `
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right: 6px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-        <span>Autofill this Application</span>
-      `;
-      autofillBtn.disabled = false;
-    }
-  });
-
-  // Save New Answer
-  saveAnswerBtn.addEventListener("click", async () => {
-    const q = newQInput.value.trim();
-    const a = newAInput.value.trim();
-    const scope = newScopeSelect.value;
-    const company = currentContext.job ? currentContext.job.company : null;
-    const role = currentContext.job ? currentContext.job.position : null;
-
-    if (!q || !a) {
-      showToast("Please enter both question prompt and answer.", "error");
-      return;
-    }
-
-    if (scope === "company" && !company) {
-      showToast("Company name required for company scope.", "error");
-      return;
-    }
-
-    try {
-      saveAnswerBtn.textContent = "Saving to Library...";
       saveAnswerBtn.disabled = true;
+      saveAnswerBtn.textContent = "Saving…";
 
-      const resp = await apiFetch("/answers", {
-        method: "POST",
-        body: JSON.stringify({
-          question: q,
-          answer: a,
-          scope: scope,
-          company: scope === "company" ? company : null,
-          role: scope === "application" ? role : null,
-          tags: scope
-        })
-      });
-
-      if (resp.ok) {
-        showToast("Answer saved to your library.");
-        newQInput.value = "";
-        newAInput.value = "";
-      } else {
-        const err = await resp.json().catch(() => ({}));
-        showToast(err.detail || "Could not save answer.", "error");
-      }
-    } catch (e) {
-      showToast("Error saving answer.", "error");
-    } finally {
-      saveAnswerBtn.textContent = "Save to Answer Library";
-      saveAnswerBtn.disabled = false;
-    }
-  });
-
-  // Submission Confirmation
-  confirmAppliedBtn.addEventListener("click", async () => {
-    if (!currentContext.application) {
-      const comp = currentContext.job ? currentContext.job.company : "Target Company";
-      const pos = currentContext.job ? currentContext.job.position : "Role";
-      const resp = await apiFetch("/applications", {
-        method: "POST",
-        body: JSON.stringify({ company: comp, position: pos, status: "Saved" })
-      });
-      if (resp.ok) {
-        currentContext.application = await resp.json();
-      }
-    }
-
-    if (currentContext.application) {
       try {
-        confirmAppliedBtn.textContent = "Marking as Applied...";
-        const shouldSchedule = reminderCheck.checked;
-        const resp = await apiFetch(`/applications/${currentContext.application.id}/confirm-applied`, {
+        const response = await apiFetch("/answers", {
           method: "POST",
           body: JSON.stringify({
-            create_reminder: shouldSchedule,
-            reminder_days: 7
+            question,
+            answer,
+            scope,
+            company: scope === "company" ? company : null,
+            role: scope === "application" ? role : null,
+            tags: scope
           })
         });
 
-        if (resp.ok) {
-          stateSubmission.classList.add("hidden");
-          chrome.storage.local.remove([tabSubmitKey]);
-          chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG", tabId: activeTabId });
-          showToast("Marked as Applied! Follow-up reminder active.");
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || "Could not save this answer.");
         }
-      } catch (e) {
-        showToast("Could not confirm application.", "error");
-      } finally {
-        confirmAppliedBtn.textContent = "Yes, mark as Applied";
-      }
-    }
-  });
 
-  dismissSubmissionBtn.addEventListener("click", () => {
-    stateSubmission.classList.add("hidden");
-    chrome.storage.local.remove([tabSubmitKey]);
-    chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG", tabId: activeTabId });
-  });
+        showToast("Answer saved to your library.");
+        if (newQInput) newQInput.value = "";
+        if (newAInput) newAInput.value = "";
+        if (manualAnswerPanel) manualAnswerPanel.classList.add("hidden");
+        if (toggleManualAnswerBtn) toggleManualAnswerBtn.textContent = "Add an answer manually";
+      } catch (error) {
+        showToast(error.message, "error");
+      } finally {
+        saveAnswerBtn.disabled = false;
+        saveAnswerBtn.textContent = "Save answer";
+      }
+    });
+  }
+
+  if (confirmAppliedBtn) confirmAppliedBtn.addEventListener("click", markApplied);
+
+  if (dismissSubmissionBtn) {
+    dismissSubmissionBtn.addEventListener("click", () => {
+      if (stateSubmission) stateSubmission.classList.add("hidden");
+      if (tabSubmitKey) chrome.storage.local.remove([tabSubmitKey]);
+      chrome.runtime.sendMessage({ type: "CLEAR_SUBMISSION_FLAG", tabId: activeTabId });
+    });
+  }
+  } // end attachEvents
 });

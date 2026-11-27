@@ -103,6 +103,8 @@ export default function ProfilePage() {
       formData.append('file', resumeFile);
       const res = await api.autofillResume(formData);
       const fields: Record<string, string> = res?.fields || {};
+      const resumeExperiences: any[] = Array.isArray(res?.experiences) ? res.experiences : [];
+      const resumeProjects: any[] = Array.isArray(res?.projects) ? res.projects : [];
 
       const next: any = { ...(profile || {}) };
       const filled: string[] = [];
@@ -116,10 +118,73 @@ export default function ProfilePage() {
       });
       setProfile(next);
 
-      if (filled.length === 0) {
+      // Work experience and projects live in their own tables, so save them as entries.
+      const existingRoles = new Set(
+        experiences.map(e => `${(e.company || '').toLowerCase().trim()}|${(e.position || '').toLowerCase().trim()}`)
+      );
+      const addedRoles: any[] = [];
+      for (const exp of resumeExperiences) {
+        const company = String(exp?.company || '').trim();
+        const position = String(exp?.position || '').trim();
+        if (!company || !position) continue;
+        const key = `${company.toLowerCase()}|${position.toLowerCase()}`;
+        if (existingRoles.has(key)) continue;
+        try {
+          const created = await api.addExperience({
+            company,
+            position,
+            description: exp?.description || null,
+            start_date: exp?.start_date || null,
+            end_date: exp?.end_date || null,
+            is_current: !!exp?.is_current,
+          });
+          existingRoles.add(key);
+          addedRoles.push(created);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      if (addedRoles.length > 0) setExperiences(prev => [...addedRoles, ...prev]);
+
+      const existingProjects = new Set(
+        projects.map(p => (p.name || '').toLowerCase().trim())
+      );
+      const addedProjects: any[] = [];
+      for (const proj of resumeProjects) {
+        const name = String(proj?.name || '').trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        if (existingProjects.has(key)) continue;
+        try {
+          const created = await api.addProject({
+            name,
+            description: proj?.description || null,
+            project_url: proj?.project_url || null,
+            technologies: proj?.technologies || null,
+          });
+          existingProjects.add(key);
+          addedProjects.push(created);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      if (addedProjects.length > 0) setProjects(prev => [...addedProjects, ...prev]);
+
+      const addedParts: string[] = [];
+      if (addedRoles.length > 0) {
+        addedParts.push(`${addedRoles.length} work experience ${addedRoles.length === 1 ? 'entry' : 'entries'}`);
+      }
+      if (addedProjects.length > 0) {
+        addedParts.push(`${addedProjects.length} ${addedProjects.length === 1 ? 'project' : 'projects'}`);
+      }
+
+      if (filled.length === 0 && addedParts.length === 0) {
         setResumeMessage('We read your resume, but every detail we found is already filled in. Tick "Overwrite existing values" to replace them.');
       } else {
-        setResumeMessage(`Filled ${filled.length} field${filled.length === 1 ? '' : 's'}: ${filled.join(', ')}. Review them, then press Save Changes.`);
+        const parts: string[] = [];
+        if (addedParts.length > 0) parts.push(`added ${addedParts.join(' and ')}`);
+        if (filled.length > 0) parts.push(`filled ${filled.length} field${filled.length === 1 ? '' : 's'} (${filled.join(', ')})`);
+        setResumeMessage(`From your resume we ${parts.join(' and ')}. Review everything, then press Save Changes.`);
       }
     } catch (e: any) {
       setResumeError(e?.message || 'Could not read that resume. Please try another file.');
@@ -247,7 +312,7 @@ export default function ProfilePage() {
 
           <p className="text-xs text-ink-secondary leading-relaxed">
             Upload your resume (PDF, DOCX, or TXT) and we will copy the details applications keep asking for —
-            name, contact info, links, education, and summary — into the form below.
+            name, contact info, links, education, summary, work experience, and projects — into your profile.
           </p>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -536,7 +601,7 @@ export default function ProfilePage() {
                 <div>
                   <span className="font-semibold text-xs text-ink-primary">{exp.company}</span>
                   <span className="text-xs text-ink-secondary ml-2">— {exp.position}</span>
-                  {exp.description && <p className="text-xs text-ink-muted mt-1">{exp.description}</p>}
+                  {exp.description && <p className="text-xs text-ink-muted mt-1 whitespace-pre-line">{exp.description}</p>}
                 </div>
                 <button onClick={() => handleDeleteExperience(exp.id)} className="text-ink-muted hover:text-status-error p-1">
                   <Trash2 className="w-3.5 h-3.5" />
@@ -601,7 +666,7 @@ export default function ProfilePage() {
                 <div>
                   <span className="font-semibold text-xs text-ink-primary">{proj.name}</span>
                   {proj.technologies && <span className="text-[11px] text-brand-blue bg-blue-50 px-1.5 py-0.5 rounded ml-2 font-mono">{proj.technologies}</span>}
-                  {proj.description && <p className="text-xs text-ink-muted mt-1">{proj.description}</p>}
+                  {proj.description && <p className="text-xs text-ink-muted mt-1 whitespace-pre-line">{proj.description}</p>}
                 </div>
                 <button onClick={() => handleDeleteProject(proj.id)} className="text-ink-muted hover:text-status-error p-1">
                   <Trash2 className="w-3.5 h-3.5" />

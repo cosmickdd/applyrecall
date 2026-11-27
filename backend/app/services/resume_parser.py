@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 MAX_RESUME_BYTES = 5 * 1024 * 1024  # 5 MB
 
@@ -51,6 +51,17 @@ SECTION_ALIASES = {
     "education": {
         "education", "academics", "academic background", "academic qualifications",
         "education and training", "qualifications", "educational background",
+    },
+    "experience": {
+        "experience", "work experience", "professional experience", "employment",
+        "employment history", "work history", "experience history",
+        "professional background", "career history", "relevant experience",
+        "internships", "internship experience", "work and internship experience",
+    },
+    "projects": {
+        "projects", "personal projects", "academic projects", "technical projects",
+        "selected projects", "key projects", "side projects", "project work",
+        "project experience", "projects and achievements",
     },
 }
 
@@ -349,6 +360,341 @@ def _detect_summary(sections: Dict[str, List[str]]) -> Optional[str]:
         text = cut[: cut.rfind(" ")] if " " in cut else cut
         text += "…"
     return text
+
+
+BULLET_RE = re.compile(r"^\s*(?:[\u2022\u25cf\u25aa\u2023\u00b7*\-]|\d+[.)])\s+")
+MONTH_PATTERN = (
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
+    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+)
+DATE_TOKEN = rf"(?:{MONTH_PATTERN}\.?[\s,]*)?(?:19|20)\d{{2}}"
+DATE_RANGE_RE = re.compile(
+    rf"(?P<start>{DATE_TOKEN})\s*(?:-|\u2013|\u2014|to|until|till)\s*"
+    rf"(?P<end>{DATE_TOKEN}|present|current|now|ongoing)",
+    re.IGNORECASE,
+)
+SINGLE_DATE_RE = re.compile(rf"\b{DATE_TOKEN}\b", re.IGNORECASE)
+MONTH_INDEX = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+POINT_RE = re.compile(
+    r"\b(?:engineer|engineering|developer|programmer|intern|internship|analyst|scientist|"
+    r"designer|manager|consultant|architect|lead|specialist|associate|coordinator|"
+    r"administrator|technician|researcher|assistant|tutor|teacher|founder|co-?founder|"
+    r"director|officer|executive|strategist|marketer|recruiter|writer|editor|freelancer|"
+    r"volunteer|trainee|apprentice)\b",
+    re.IGNORECASE,
+)
+ORGANISATION_RE = re.compile(
+    r"\b(?:inc|ltd|limited|llc|corp(?:oration)?|company|technologies|technology|solutions|"
+    r"labs?|systems?|software|services|consulting|group|ventures|studios?|media|bank|"
+    r"university|college|institute|foundation|pvt)\b",
+    re.IGNORECASE,
+)
+TECH_LABEL_RE = re.compile(
+    r"^(?:tech(?:nologies)?(?:\s+used)?|tech\s+stack|stack|tools|built\s+with|"
+    r"languages|frameworks)\s*[:\-\u2013\u2014]\s*(.+)$",
+    re.IGNORECASE,
+)
+HEADER_SPLIT_RE = re.compile(
+    r"\s*(?:\||\u2022|\u00b7|\u2014|\u2013|\s-\s|\bat\b|@|,)\s*", re.IGNORECASE
+)
+PROJECT_SPLIT_RE = re.compile(r"\s*(?:\||\u2022|\u00b7)\s*")
+URL_ONLY_RE = re.compile(
+    r"^(?:(?:https?://|www\.)\S+|\S+\.(?:com|io|dev|me|net|org|co|app|xyz|github\.io)(?:/\S*)?)$",
+    re.IGNORECASE,
+)
+TECH_TOKEN_RE = re.compile(
+    r"\b(?:react|reactjs|next\.?js|node\.?js|nodejs|python|java|javascript|typescript|"
+    r"tailwind|sql|postgres(?:ql)?|mysql|mongo(?:db)?|redis|aws|gcp|azure|docker|kubernetes|"
+    r"pytorch|tensorflow|sklearn|scikit-learn|pandas|numpy|django|flask|fastapi|spring|"
+    r"angular|vue|svelte|firebase|supabase|graphql|rest|html|css|sass|git|linux|kotlin|"
+    r"swift|flutter|dart|php|laravel|ruby|rails|golang|rust|scala|c\+\+|c#|\.net|d3\.js|"
+    r"express|prisma|jquery|bootstrap|figma|matlab)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_prose(line: str) -> bool:
+    """A sentence that wrapped onto its own line rather than a new entry header."""
+    return line.endswith(".") and len(line.split()) >= 4
+
+
+def _looks_like_technologies(text: str) -> bool:
+    candidate = text.strip()
+    if not candidate or URL_RE.search(candidate):
+        return False
+    if "," in candidate:
+        return True
+    return bool(TECH_TOKEN_RE.search(candidate))
+
+
+def _normalise_date(raw: str) -> str:
+    value = raw.strip().rstrip(".").strip()
+    if not value:
+        return ""
+    if value.lower() in {"present", "current", "now", "ongoing"}:
+        return "present"
+    month_match = re.match(
+        rf"({MONTH_PATTERN})\.?[\s,]*((?:19|20)\d{{2}})", value, re.IGNORECASE
+    )
+    if month_match:
+        month = MONTH_INDEX.get(month_match.group(1).lower()[:3])
+        if month:
+            return f"{month_match.group(2)}-{month:02d}"
+    year = re.search(r"(?:19|20)\d{2}", value)
+    return year.group(0) if year else ""
+
+
+def _extract_dates(line: str) -> tuple[str, str, str, bool]:
+    """Pulls a date range out of a header line, returning the leftover text."""
+    start = end = ""
+    is_current = False
+    cleaned = line
+
+    match = DATE_RANGE_RE.search(cleaned)
+    if match:
+        start = _normalise_date(match.group("start"))
+        end = _normalise_date(match.group("end"))
+        is_current = end == "present"
+        if is_current:
+            end = ""
+        cleaned = (cleaned[: match.start()] + " " + cleaned[match.end():]).strip()
+    else:
+        single = SINGLE_DATE_RE.search(cleaned)
+        if single:
+            end = _normalise_date(single.group(0))
+            cleaned = (cleaned[: single.start()] + " " + cleaned[single.end():]).strip()
+
+    cleaned = _clean_value(re.sub(r"[\s|,\-\u2013\u2014]+$", "", cleaned))
+    cleaned = _clean_value(re.sub(r"^[\s|,\-\u2013\u2014]+", "", cleaned))
+    return cleaned, start, end, is_current
+
+
+def _can_be_header(line: str) -> bool:
+    if len(line) > 110:
+        return False
+    if line.endswith(".") and len(line.split()) >= 5:
+        return False
+    return True
+
+
+def _split_entries(lines: List[str]) -> List[Dict[str, List[str]]]:
+    """Groups section lines into resume entries: header lines plus description lines."""
+    entries: List[Dict[str, List[str]]] = []
+    current: Optional[Dict[str, List[str]]] = None
+
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+
+        if BULLET_RE.match(line):
+            body = _clean_value(BULLET_RE.sub("", line, count=1))
+            if not body:
+                continue
+            if current is None:
+                current = {"headers": [], "bullets": []}
+                entries.append(current)
+            current["bullets"].append(body)
+            continue
+
+        if current is None:
+            current = {"headers": [line], "bullets": []}
+            entries.append(current)
+            continue
+
+        headers = current["headers"]
+        if URL_ONLY_RE.match(line) or _is_prose(line):
+            current["bullets"].append(line)
+            continue
+
+        if current["bullets"] or not headers:
+            current = {"headers": [line], "bullets": []}
+            entries.append(current)
+            continue
+
+        has_date = any(DATE_RANGE_RE.search(h) or SINGLE_DATE_RE.search(h) for h in headers)
+        if len(headers) < 2 and _can_be_header(line):
+            headers.append(line)
+        elif len(headers) == 2 and not has_date and (
+            DATE_RANGE_RE.search(line) or SINGLE_DATE_RE.search(line)
+        ):
+            headers.append(line)
+        else:
+            current["bullets"].append(line)
+
+    return entries
+
+
+def _split_header_text(text: str) -> List[str]:
+    parts = [_clean_value(part) for part in HEADER_SPLIT_RE.split(text)]
+    segments = [
+        part
+        for part in parts
+        if len(part) > 1
+        and not re.fullmatch(
+            r"(?:inc|ltd|llc|corp|co|pvt|limited|company)\.?", part, re.IGNORECASE
+        )
+    ]
+    return segments
+
+
+def _entry_details(
+    entry: Dict[str, List[str]],
+) -> tuple[List[str], str, str, bool, List[str]]:
+    headers: List[str] = []
+    start = end = ""
+    is_current = False
+
+    for raw_header in entry["headers"]:
+        cleaned, header_start, header_end, header_current = _extract_dates(raw_header)
+        if header_start and not start:
+            start = header_start
+        if header_end and not end:
+            end = header_end
+        is_current = is_current or header_current
+        if cleaned:
+            headers.append(cleaned)
+
+    promoted: List[str] = []
+    kept: List[str] = []
+    for header in headers:
+        if header.endswith(".") and len(header.split()) >= 5:
+            promoted.append(header)
+        else:
+            kept.append(header)
+
+    return kept, start, end, is_current, promoted
+
+
+def _experience_from_entry(entry: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
+    headers, start, end, is_current, promoted = _entry_details(entry)
+    segments: List[str] = []
+    for header in headers:
+        segments.extend(_split_header_text(header))
+    if not segments:
+        return None
+
+    position = next((segment for segment in segments if POINT_RE.search(segment)), None)
+    company = next(
+        (
+            segment
+            for segment in segments
+            if segment != position and ORGANISATION_RE.search(segment)
+        ),
+        None,
+    )
+    if company is None:
+        company = next((segment for segment in segments if segment != position), None)
+    if position is None:
+        position = next((segment for segment in segments if segment != company), None)
+    if not company or not position:
+        return None
+
+    description_lines = [line for line in promoted + entry["bullets"] if line.strip()]
+    description = "\n".join(description_lines)[:1500].strip() or None
+
+    return {
+        "company": company[:120],
+        "position": position[:120],
+        "description": description,
+        "start_date": start or None,
+        "end_date": end or None,
+        "is_current": is_current,
+    }
+
+
+def _project_from_entry(entry: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
+    headers, _start, _end, _current, promoted = _entry_details(entry)
+    if not headers:
+        return None
+
+    name_line = headers[0]
+    technology_parts: List[str] = []
+
+    # "Name | React, Node.js" splits the technologies out; "Name - tagline" keeps the tagline.
+    parts = [_clean_value(part) for part in PROJECT_SPLIT_RE.split(name_line)]
+    parts = [part for part in parts if part]
+    if len(parts) == 1:
+        dashed = [_clean_value(part) for part in re.split(r"\s*(?:\u2014|\u2013|\s-\s)\s*", parts[0])]
+        dashed = [part for part in dashed if part]
+        if len(dashed) > 1 and any(_looks_like_technologies(part) for part in dashed[1:]):
+            parts = dashed
+    name = parts[0] if parts else ""
+    for part in parts[1:]:
+        if _looks_like_technologies(part):
+            technology_parts.append(part)
+        elif not URL_RE.search(part):
+            name = f"{name} - {part}" if name else part
+
+    if len(name) < 2:
+        return None
+
+    technologies = ", ".join(technology_parts)[:200]
+    project_url = ""
+
+    description_lines: List[str] = []
+    for line in promoted + entry["bullets"]:
+        tech_match = TECH_LABEL_RE.match(line)
+        if tech_match:
+            if not technologies:
+                technologies = _clean_value(tech_match.group(1))[:200]
+            continue
+        url_match = URL_RE.search(line)
+        if url_match and not project_url:
+            project_url = _normalise_url(url_match.group(0))
+        cleaned = _clean_value(URL_RE.sub("", line))
+        if cleaned:
+            description_lines.append(cleaned)
+
+    if not project_url:
+        for header in headers[1:]:
+            url_match = URL_RE.search(header)
+            if url_match:
+                project_url = _normalise_url(url_match.group(0))
+                break
+
+    return {
+        "name": name[:120],
+        "description": "\n".join(description_lines)[:1500].strip() or None,
+        "project_url": project_url or None,
+        "technologies": technologies or None,
+    }
+
+
+def parse_resume_extras(text: str) -> Dict[str, List[Dict[str, Any]]]:
+    """Extracts work experience and project entries written in the resume."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    sections = _split_sections(lines)
+
+    experiences: List[Dict[str, Any]] = []
+    seen_experience = set()
+    for entry in _split_entries(sections.get("experience", [])):
+        item = _experience_from_entry(entry)
+        if not item:
+            continue
+        key = (item["company"].lower(), item["position"].lower())
+        if key in seen_experience:
+            continue
+        seen_experience.add(key)
+        experiences.append(item)
+
+    projects: List[Dict[str, Any]] = []
+    seen_projects = set()
+    for entry in _split_entries(sections.get("projects", [])):
+        item = _project_from_entry(entry)
+        if not item:
+            continue
+        key = item["name"].lower()
+        if key in seen_projects:
+            continue
+        seen_projects.add(key)
+        projects.append(item)
+
+    return {"experiences": experiences[:10], "projects": projects[:10]}
 
 
 def parse_resume(text: str) -> Dict[str, str]:
