@@ -14,15 +14,16 @@ import {
   CheckCircle2,
   Sparkles,
   ArrowRight,
-  ExternalLink,
-  Layers,
   Zap,
   HelpCircle,
   ChevronDown,
   ChevronUp,
   FolderArchive,
   Compass,
-  FileCheck,
+  Globe,
+  Clock,
+  MousePointerClick,
+  FileText,
   CheckCircle
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
@@ -87,6 +88,21 @@ const FAQS = [
   }
 ]
 
+const PLATFORMS = [
+  'Greenhouse ATS',
+  'Lever.co',
+  'Workday Jobs',
+  'AshbyHQ',
+  'Taleo Oracle',
+  'LinkedIn Easy Apply',
+  'Handshake Jobs',
+  'SmartRecruiters',
+  'iCIMS',
+  'Custom Career Portals'
+]
+
+const QUICK_STEPS = ['Download', 'Extract', 'Load unpacked', 'Sync']
+
 export default function ExtensionPage() {
   const { user, profile } = useAuth()
   const [extCode, setExtCode] = useState<string | null>(null)
@@ -150,209 +166,328 @@ export default function ExtensionPage() {
   const displayEmail = profile?.email || user?.email || 'your-account@applyrecall.com'
 
   const activeBrowserConfig = BROWSER_CONFIGS[selectedBrowser]
+  const codeChars = (extCode || '').split('')
+
+  const installSteps: { title: string; body: React.ReactNode }[] = [
+    {
+      title: 'Download & extract the ZIP',
+      body: (
+        <>
+          Use <strong className="text-ink-primary">Download Extension</strong> above, then right-click the file and pick{' '}
+          <strong className="text-ink-primary">&quot;Extract All…&quot;</strong> so you end up with a normal folder.
+        </>
+      )
+    },
+    {
+      title: 'Open your extensions manager',
+      body: (
+        <>
+          Paste{' '}
+          <code className="rounded border border-edge-default bg-brand-soft px-1.5 py-0.5 font-mono text-[11px] text-brand-blue">
+            {activeBrowserConfig.url}
+          </code>{' '}
+          into a new tab and press Enter.
+        </>
+      )
+    },
+    {
+      title: 'Turn Developer mode ON',
+      body: (
+        <>
+          Find the <strong className="text-ink-primary">Developer mode</strong> toggle in the{' '}
+          {activeBrowserConfig.toggleLocation.toLowerCase()} of that page and switch it on.
+        </>
+      )
+    },
+    {
+      title: 'Click "Load unpacked" and pick the folder',
+      body: (
+        <>
+          Choose the extracted folder named{' '}
+          <code className="rounded border border-edge-default bg-brand-soft px-1.5 py-0.5 font-mono text-[11px] text-brand-blue">
+            extension
+          </code>{' '}
+          — the one that contains <span className="font-mono text-[11px] text-ink-muted">manifest.json</span>.
+        </>
+      )
+    }
+  ]
 
   return (
     <>
       <TopBar title="Chrome Extension" />
 
-      <main className="flex-1 p-6 sm:p-8 max-w-[1304px] w-full mx-auto space-y-8">
-        {/* Header Banner */}
-        <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-brand-light text-brand-blue border border-brand-blue/20">
-                <Puzzle className="w-3.5 h-3.5 text-brand-blue" />
-                <span>Chromium Extension • Manifest V3</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-status-success border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Account Verified: {displayName}</span>
-              </span>
-            </div>
+      <main className="flex-1 w-full max-w-[1304px] mx-auto px-5 sm:px-8 py-7 space-y-6">
+        {/* ------------------------------------------------ Hero */}
+        <section className="relative overflow-hidden rounded-container border border-edge-default bg-brand-surface shadow-subtle">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-light via-brand-surface to-brand-surface" />
+          <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-brand-blue/[0.06] blur-2xl" />
 
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink-primary">
-              ApplyRecall Chrome Extension
-            </h1>
-            <p className="text-sm text-ink-secondary leading-relaxed">
-              Autofill repetitive job forms in under 1.5 seconds, remember past approved essays across Lever, Greenhouse, and Workday, and track every application automatically.
-            </p>
-          </div>
-
-          {/* Quick Primary Actions */}
-          <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-stretch sm:items-center gap-3 flex-shrink-0">
-            <a
-              href="/applyrecall-extension.zip"
-              download="applyrecall-extension.zip"
-              className="px-5 py-3 rounded-btn bg-brand-blue text-white text-xs font-bold uppercase tracking-wider hover:bg-brand-deep transition-all shadow-subtle flex items-center justify-center gap-2.5 active:scale-[0.98]"
-            >
-              <Download className="w-4 h-4 text-white" />
-              <span>Download Extension (.ZIP)</span>
-            </a>
-            <a
-              href="/api/extension/download"
-              download="applyrecall-extension.zip"
-              className="px-4 py-3 rounded-btn border border-edge-default bg-brand-surface hover:bg-brand-subtle text-ink-secondary hover:text-ink-primary text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-              title="Direct server download mirror"
-            >
-              <span>Server Mirror</span>
-            </a>
-          </div>
-        </div>
-
-        {/* 4-Step Visual Installation Stepper */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-5 space-y-2 relative">
-            <div className="w-8 h-8 rounded-full bg-brand-light text-brand-blue font-bold text-xs flex items-center justify-center border border-brand-blue/20">
-              1
-            </div>
-            <h3 className="font-bold text-sm text-ink-primary">Download Zip</h3>
-            <p className="text-xs text-ink-secondary leading-relaxed">
-              Grab <span className="font-mono text-brand-blue font-medium">applyrecall-extension.zip</span> from the download button above.
-            </p>
-          </div>
-
-          <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-5 space-y-2 relative">
-            <div className="w-8 h-8 rounded-full bg-brand-light text-brand-blue font-bold text-xs flex items-center justify-center border border-brand-blue/20">
-              2
-            </div>
-            <h3 className="font-bold text-sm text-ink-primary">Unzip Folder</h3>
-            <p className="text-xs text-ink-secondary leading-relaxed">
-              Right-click the zip file, choose <strong>&quot;Extract All...&quot;</strong> to unpack into a regular folder.
-            </p>
-          </div>
-
-          <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-5 space-y-2 relative">
-            <div className="w-8 h-8 rounded-full bg-brand-light text-brand-blue font-bold text-xs flex items-center justify-center border border-brand-blue/20">
-              3
-            </div>
-            <h3 className="font-bold text-sm text-ink-primary">Load Unpacked</h3>
-            <p className="text-xs text-ink-secondary leading-relaxed">
-              In <code className="text-brand-blue bg-brand-soft px-1 rounded text-[11px]">chrome://extensions</code>, turn on Developer mode and pick the folder.
-            </p>
-          </div>
-
-          <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-5 space-y-2 relative">
-            <div className="w-8 h-8 rounded-full bg-emerald-50 text-status-success font-bold text-xs flex items-center justify-center border border-emerald-200">
-              4
-            </div>
-            <h3 className="font-bold text-sm text-ink-primary">1-Click Sync</h3>
-            <p className="text-xs text-ink-secondary leading-relaxed">
-              Pin the extension (📌), open it, and tap <strong>&quot;✨ Sync from Active Website Login&quot;</strong>.
-            </p>
-          </div>
-        </div>
-
-        {/* Pairing Code & Authentication Sync Card */}
-        <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-6 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-edge-default">
-            <div>
-              <div className="flex items-center gap-2">
-                <Key className="w-5 h-5 text-brand-blue" />
-                <h2 className="text-base font-bold text-ink-primary">Extension Account Pairing</h2>
-              </div>
-              <p className="text-xs text-ink-secondary mt-0.5">
-                Two seamless ways to connect your extension to your verified account ({displayEmail})
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-btn self-start sm:self-auto">
-              <CheckCircle className="w-4 h-4 text-emerald-600" />
-              <span>Ready to Sync</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Method A: 1-Click Active Website Sync (Recommended) */}
-            <div className="p-5 rounded-btn bg-brand-light/60 border border-brand-blue/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-brand-blue px-2.5 py-0.5 rounded-full bg-brand-light border border-brand-blue/30">
-                  Option A • Fastest &amp; Automatic
+          <div className="relative grid gap-7 p-6 sm:p-8 lg:grid-cols-[1.4fr_1fr] lg:items-center">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-blue/20 bg-brand-surface/80 px-3 py-1 text-[11px] font-semibold text-brand-blue">
+                  <Puzzle className="h-3.5 w-3.5" />
+                  Manifest V3 · Chromium
                 </span>
-                <Sparkles className="w-4 h-4 text-brand-blue" />
-              </div>
-              <h3 className="font-bold text-sm text-ink-primary">1-Click Sync from Website</h3>
-              <p className="text-xs text-ink-secondary leading-relaxed">
-                With this dashboard open in your browser, simply click the ApplyRecall extension icon in your toolbar and press:
-              </p>
-              <div className="p-3 bg-brand-surface rounded-btn border border-brand-blue/30 text-xs font-semibold text-brand-blue flex items-center justify-center gap-2 shadow-subtle">
-                <Sparkles className="w-4 h-4 text-brand-blue" />
-                <span>✨ Sync from Active Website Login</span>
-              </div>
-              <p className="text-[11.5px] text-ink-muted">
-                The extension reads your active login token and connects instantly—no manual typing required.
-              </p>
-            </div>
-
-            {/* Method B: 6-Digit Pairing Code */}
-            <div className="p-5 rounded-btn bg-brand-soft border border-edge-default space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-ink-secondary px-2.5 py-0.5 rounded-full bg-brand-surface border border-edge-default">
-                  Option B • Manual Code
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-status-success">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {displayName}
                 </span>
-                <Key className="w-4 h-4 text-ink-secondary" />
               </div>
-              <h3 className="font-bold text-sm text-ink-primary">Your 6-Character Pairing Code</h3>
-              <div className="flex items-center justify-between gap-3 p-3 bg-brand-surface rounded-btn border border-edge-default shadow-subtle">
-                <div className="text-2xl font-mono font-bold tracking-[0.25em] text-brand-blue pl-2">
-                  {codeLoading ? '••••••' : extCode || '••••••'}
+
+              <div className="space-y-2">
+                <h1 className="text-2xl font-bold leading-tight tracking-tight text-ink-primary sm:text-[30px]">
+                  Autofill job applications,
+                  <br className="hidden sm:block" /> remember every answer.
+                </h1>
+                <p className="max-w-xl text-sm leading-relaxed text-ink-secondary">
+                  Fill repetitive ATS forms in seconds and reuse essays you have already approved — on Lever,
+                  Greenhouse, Workday and more.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-1">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-brand-blue" />
+                  <span className="text-xs font-semibold text-ink-primary">Under 1.5s</span>
+                  <span className="text-[11px] text-ink-muted">per form</span>
                 </div>
+                <span className="hidden h-4 w-px bg-edge-default sm:block" />
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-brand-blue" />
+                  <span className="text-xs font-semibold text-ink-primary">{PLATFORMS.length}+</span>
+                  <span className="text-[11px] text-ink-muted">job platforms</span>
+                </div>
+                <span className="hidden h-4 w-px bg-edge-default sm:block" />
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-brand-blue" />
+                  <span className="text-xs font-semibold text-ink-primary">Answer library</span>
+                  <span className="text-[11px] text-ink-muted">reused everywhere</span>
+                </div>
+              </div>
+            </div>
 
-                <div className="flex items-center gap-1.5">
-                  {extCode && (
-                    <button
-                      type="button"
-                      onClick={handleCopyCode}
-                      className="px-3 py-1.5 bg-brand-soft hover:bg-brand-subtle border border-edge-default rounded-btn text-xs font-semibold text-ink-primary flex items-center gap-1.5 transition-colors"
-                      title="Copy code to clipboard"
+            {/* Download panel */}
+            <div className="rounded-card border border-edge-default bg-brand-surface/95 p-4 shadow-subtle backdrop-blur-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                  Extension package
+                </span>
+                <span className="rounded-full border border-edge-default bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-ink-secondary">
+                  .ZIP
+                </span>
+              </div>
+
+              <p className="font-mono text-[11px] text-ink-muted">applyrecall-extension.zip</p>
+
+              <a
+                href="/applyrecall-extension.zip"
+                download="applyrecall-extension.zip"
+                className="flex w-full items-center justify-center gap-2 rounded-btn bg-brand-blue px-4 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-subtle transition-colors hover:bg-brand-deep active:scale-[0.99]"
+              >
+                <Download className="h-4 w-4" />
+                Download Extension
+              </a>
+
+              <a
+                href="/api/extension/download"
+                download="applyrecall-extension.zip"
+                className="flex w-full items-center justify-center gap-1.5 rounded-btn border border-edge-default bg-brand-surface px-4 py-2.5 text-[11.5px] font-semibold text-ink-secondary transition-colors hover:border-edge-strong hover:text-ink-primary"
+                title="Direct server download mirror"
+              >
+                Server mirror
+              </a>
+
+              <p className="flex items-center justify-center gap-1.5 text-[10.5px] text-ink-muted">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                Chrome · Edge · Brave · Arc
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------ Quick steps rail */}
+        <section className="rounded-card border border-edge-default bg-brand-surface px-5 py-4 shadow-subtle">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted sm:mr-2">
+              Setup
+            </span>
+            <ol className="flex flex-1 flex-wrap items-center gap-y-2">
+              {QUICK_STEPS.map((label, index) => (
+                <li key={label} className="flex items-center">
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                        index === QUICK_STEPS.length - 1
+                          ? 'bg-emerald-50 text-status-success ring-1 ring-emerald-200'
+                          : 'bg-brand-light text-brand-blue ring-1 ring-brand-blue/20'
+                      }`}
                     >
-                      {copiedCode ? <Check className="w-3.5 h-3.5 text-status-success" /> : <Copy className="w-3.5 h-3.5 text-ink-secondary" />}
-                      <span>{copiedCode ? 'Copied' : 'Copy'}</span>
-                    </button>
+                      {index + 1}
+                    </span>
+                    <span className="text-xs font-semibold text-ink-primary">{label}</span>
+                  </span>
+                  {index < QUICK_STEPS.length - 1 && (
+                    <span className="mx-2.5 h-px w-6 bg-edge-default sm:w-10" aria-hidden="true" />
                   )}
-                  <button
-                    type="button"
-                    onClick={handleRegenerateCode}
-                    disabled={codeLoading}
-                    className="p-1.5 bg-brand-soft hover:bg-brand-subtle border border-edge-default rounded-btn text-ink-secondary hover:text-ink-primary transition-colors disabled:opacity-50"
-                    title="Generate a new pairing code"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${codeLoading ? 'animate-spin text-brand-blue' : ''}`} />
-                  </button>
-                </div>
-              </div>
-              <p className="text-[11.5px] text-ink-muted">
-                Type this code into the extension popup under &quot;Manual 6-Digit Code&quot; and click Connect.
-              </p>
-            </div>
+                </li>
+              ))}
+            </ol>
+            <span className="text-[11px] text-ink-muted">One-time setup, ~2 minutes</span>
           </div>
-        </div>
+        </section>
 
-        {/* Interactive Step-by-Step Installation Guide */}
-        <section className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-6 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-edge-default">
-            <div className="flex items-center gap-2.5">
-              <Laptop className="w-5 h-5 text-brand-blue" />
+        {/* ------------------------------------------------ Pairing */}
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-btn bg-brand-light text-brand-blue">
+                <Key className="h-4 w-4" />
+              </span>
               <div>
-                <h2 className="text-base font-bold text-ink-primary">
-                  Step-by-Step Installation Guide (Load Unpacked)
-                </h2>
-                <p className="text-xs text-ink-secondary mt-0.5">
-                  Select your browser below for customized step-by-step instructions:
+                <h2 className="text-base font-bold text-ink-primary">Pair the extension with your account</h2>
+                <p className="text-xs text-ink-secondary">
+                  Signed in as <span className="font-medium text-ink-primary">{displayEmail}</span>
                 </p>
               </div>
             </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-status-success">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Ready to sync
+            </span>
+          </div>
 
-            {/* Browser Selector Tabs */}
-            <div className="flex items-center gap-1.5 p-1 bg-brand-soft border border-edge-default rounded-btn self-start sm:self-auto">
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* Automatic */}
+            <div className="relative flex flex-col gap-3 rounded-card border border-brand-blue/25 bg-brand-light/50 p-5">
+              <div className="flex items-center justify-between">
+                <span className="rounded-full bg-brand-blue px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                  Recommended
+                </span>
+                <Sparkles className="h-4 w-4 text-brand-blue" />
+              </div>
+
+              <h3 className="text-sm font-bold text-ink-primary">Sync from your signed-in tab</h3>
+              <p className="text-xs leading-relaxed text-ink-secondary">
+                No codes to type. Keep this dashboard open and the extension picks up your session.
+              </p>
+
+              <ol className="space-y-2 text-xs text-ink-secondary">
+                {[
+                  'Keep this dashboard open in any tab.',
+                  'Open the ApplyRecall popup from your toolbar.',
+                  'Hit “Sync from website login”.'
+                ].map((step, index) => (
+                  <li key={step} className="flex gap-2.5">
+                    <span className="mt-px flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-brand-surface text-[9.5px] font-bold text-brand-blue ring-1 ring-brand-blue/25">
+                      {index + 1}
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="mt-auto flex items-center justify-between gap-2 rounded-btn border border-brand-blue/25 bg-brand-surface px-3 py-2.5">
+                <span className="flex items-center gap-2 text-[11.5px] font-semibold text-brand-blue">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Sync from website login
+                </span>
+                <MousePointerClick className="h-3.5 w-3.5 text-brand-blue/60" />
+              </div>
+            </div>
+
+            {/* Manual code */}
+            <div className="flex flex-col gap-3 rounded-card border border-edge-default bg-brand-surface p-5 shadow-subtle">
+              <div className="flex items-center justify-between">
+                <span className="rounded-full border border-edge-default bg-brand-soft px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink-secondary">
+                  Manual code
+                </span>
+                <Key className="h-4 w-4 text-ink-muted" />
+              </div>
+
+              <h3 className="text-sm font-bold text-ink-primary">Your 6-character pairing code</h3>
+
+              <div className="flex items-center gap-1.5 py-1">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <span
+                    key={index}
+                    className="flex h-11 flex-1 items-center justify-center rounded-lg border border-edge-default bg-brand-soft font-mono text-lg font-bold uppercase text-ink-primary"
+                  >
+                    {codeLoading ? (
+                      <span className="h-1.5 w-3 animate-pulse rounded-full bg-edge-strong" />
+                    ) : (
+                      codeChars[index] || '·'
+                    )}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  disabled={!extCode || codeLoading}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-btn border border-edge-default bg-brand-surface px-3 py-2 text-[11.5px] font-semibold text-ink-primary transition-colors hover:border-edge-strong disabled:opacity-50"
+                  title="Copy code to clipboard"
+                >
+                  {copiedCode ? (
+                    <Check className="h-3.5 w-3.5 text-status-success" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5 text-ink-secondary" />
+                  )}
+                  <span>{copiedCode ? 'Copied' : 'Copy code'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRegenerateCode}
+                  disabled={codeLoading}
+                  className="flex items-center justify-center gap-1.5 rounded-btn border border-edge-default bg-brand-surface px-3 py-2 text-[11.5px] font-semibold text-ink-secondary transition-colors hover:border-edge-strong hover:text-ink-primary disabled:opacity-50"
+                  title="Generate a new pairing code"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${codeLoading ? 'animate-spin text-brand-blue' : ''}`} />
+                  <span>New</span>
+                </button>
+              </div>
+
+              <p className="mt-auto text-[11px] leading-relaxed text-ink-muted">
+                In the popup, open <span className="font-medium text-ink-secondary">Have a pairing code instead?</span>{' '}
+                and enter the code.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------ Installation guide */}
+        <section className="rounded-card border border-edge-default bg-brand-surface shadow-subtle">
+          <div className="flex flex-col gap-4 border-b border-edge-default px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-btn bg-brand-light text-brand-blue">
+                <Laptop className="h-4 w-4" />
+              </span>
+              <div>
+                <h2 className="text-base font-bold text-ink-primary">Install with “Load unpacked”</h2>
+                <p className="text-xs text-ink-secondary">Pick your browser for the exact steps.</p>
+              </div>
+            </div>
+
+            <div
+              role="tablist"
+              aria-label="Browser"
+              className="flex items-center gap-1 self-start rounded-btn border border-edge-default bg-brand-soft p-1 sm:self-auto"
+            >
               {(['chrome', 'edge', 'brave', 'arc'] as BrowserType[]).map(b => (
                 <button
                   key={b}
                   type="button"
+                  role="tab"
+                  aria-selected={selectedBrowser === b}
                   onClick={() => setSelectedBrowser(b)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${
+                  className={`rounded-[9px] px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${
                     selectedBrowser === b
-                      ? 'bg-brand-surface text-brand-blue shadow-subtle border border-edge-default'
-                      : 'text-ink-secondary hover:text-ink-primary'
+                      ? 'border border-edge-default bg-brand-surface text-brand-blue shadow-subtle'
+                      : 'border border-transparent text-ink-secondary hover:text-ink-primary'
                   }`}
                 >
                   {b}
@@ -361,240 +496,189 @@ export default function ExtensionPage() {
             </div>
           </div>
 
-          {/* Visual Browser Mockup & Action Bar */}
-          <div className="p-4 sm:p-5 rounded-card bg-brand-soft border border-edge-default space-y-4">
-            <div className="flex items-center justify-between text-xs text-ink-muted pb-3 border-b border-edge-default">
-              <span className="font-semibold text-ink-primary flex items-center gap-2">
-                <Compass className="w-4 h-4 text-brand-blue" />
-                <span>{activeBrowserConfig.name} Setup Panel</span>
-              </span>
-              <span>{activeBrowserConfig.notes}</span>
-            </div>
+          <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1fr_1fr]">
+            {/* Steps */}
+            <ol className="space-y-0">
+              {installSteps.map((step, index) => (
+                <li key={step.title} className="flex gap-3.5">
+                  <div className="flex flex-col items-center">
+                    <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-light text-[11px] font-bold text-brand-blue ring-1 ring-brand-blue/20">
+                      {index + 1}
+                    </span>
+                    {index < installSteps.length - 1 && <span className="w-px flex-1 bg-edge-default" />}
+                  </div>
+                  <div className={`min-w-0 ${index < installSteps.length - 1 ? 'pb-5' : ''}`}>
+                    <h3 className="text-xs font-bold text-ink-primary">{step.title}</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-ink-secondary">{step.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
 
-            {/* Interactive Browser Address Bar Mockup */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-brand-surface border border-edge-default rounded-btn shadow-subtle">
-                <span className="text-xs text-ink-muted font-mono select-none">🌐</span>
-                <span className="font-mono text-xs text-brand-blue font-semibold select-all">
+            {/* Mockup */}
+            <div className="space-y-3 rounded-btn border border-edge-default bg-brand-soft p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge-default pb-3">
+                <span className="flex items-center gap-2 text-[11px] font-semibold text-ink-primary">
+                  <Compass className="h-3.5 w-3.5 text-brand-blue" />
+                  {activeBrowserConfig.name}
+                </span>
+                <span className="text-[10.5px] text-ink-muted">{activeBrowserConfig.notes}</span>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-btn border border-edge-default bg-brand-surface px-3 py-2 shadow-subtle">
+                <Globe className="h-3.5 w-3.5 flex-shrink-0 text-ink-muted" />
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] font-semibold text-brand-blue">
                   {activeBrowserConfig.url}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyBrowserUrl(activeBrowserConfig.url)}
+                  className="flex flex-shrink-0 items-center gap-1 rounded-md border border-edge-default px-2 py-1 text-[10.5px] font-semibold text-ink-secondary transition-colors hover:text-ink-primary"
+                >
+                  {copiedUrl ? (
+                    <Check className="h-3 w-3 text-status-success" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                  <span>{copiedUrl ? 'Copied' : 'Copy'}</span>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => handleCopyBrowserUrl(activeBrowserConfig.url)}
-                className="px-4 py-2 bg-brand-surface hover:bg-brand-subtle border border-edge-default rounded-btn text-xs font-semibold text-ink-primary flex items-center justify-center gap-1.5 transition-colors shadow-subtle flex-shrink-0"
-              >
-                {copiedUrl ? <Check className="w-3.5 h-3.5 text-status-success" /> : <Copy className="w-3.5 h-3.5 text-ink-secondary" />}
-                <span>{copiedUrl ? 'Copied URL!' : 'Copy URL to Clipboard'}</span>
-              </button>
-            </div>
 
-            {/* Visual Diagram of Chrome Extensions Page */}
-            <div className="p-4 rounded-btn bg-brand-surface border border-edge-default shadow-subtle space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 text-xs pb-3 border-b border-edge-default">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-ink-primary">Extensions Manager</span>
-                  <span className="text-[11px] text-ink-muted">({activeBrowserConfig.url})</span>
-                </div>
-                <div className="flex items-center gap-2 bg-brand-light px-2.5 py-1 rounded-full border border-brand-blue/20">
-                  <span className="text-[11px] font-semibold text-brand-blue">Developer mode:</span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span>ON</span>
+              <div className="space-y-3 rounded-btn border border-edge-default bg-brand-surface p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge-default pb-2.5">
+                  <span className="text-[11px] font-bold text-ink-primary">Extensions</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-blue/20 bg-brand-light px-2 py-0.5 text-[10px] font-semibold text-brand-blue">
+                    Developer mode
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    ON
                   </span>
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <div className="px-3 py-1.5 rounded-btn bg-brand-blue text-white text-xs font-bold flex items-center gap-1.5 shadow-subtle ring-2 ring-brand-blue/30">
-                  <FolderArchive className="w-3.5 h-3.5" />
-                  <span>Load unpacked</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex items-center gap-1.5 rounded-btn bg-brand-blue px-3 py-1.5 text-[11px] font-bold text-white shadow-subtle ring-2 ring-brand-blue/25">
+                    <FolderArchive className="h-3.5 w-3.5" />
+                    Load unpacked
+                  </span>
+                  <span className="rounded-btn border border-edge-default bg-brand-soft px-2.5 py-1.5 text-[11px] font-medium text-ink-disabled">
+                    Pack extension
+                  </span>
+                  <span className="rounded-btn border border-edge-default bg-brand-soft px-2.5 py-1.5 text-[11px] font-medium text-ink-disabled">
+                    Update
+                  </span>
                 </div>
-                <div className="px-3 py-1.5 rounded-btn bg-brand-soft text-ink-muted text-xs font-medium border border-edge-default opacity-60">
-                  Pack extension
-                </div>
-                <div className="px-3 py-1.5 rounded-btn bg-brand-soft text-ink-muted text-xs font-medium border border-edge-default opacity-60">
-                  Update
-                </div>
-                <span className="text-xs text-brand-blue font-medium ml-2">
-                  ← Click this button in your browser
-                </span>
-              </div>
-            </div>
-          </div>
 
-          {/* 4 Step Cards with Detailed Explanations */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Step 1 */}
-            <div className="p-5 rounded-btn bg-brand-soft border border-edge-default space-y-2">
-              <div className="flex items-center gap-2.5">
-                <span className="w-7 h-7 rounded-full bg-brand-blue text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-                  1
-                </span>
-                <h3 className="text-xs font-bold text-ink-primary">Download &amp; Extract the ZIP</h3>
-              </div>
-              <p className="text-xs text-ink-secondary leading-relaxed pl-9">
-                Click <strong>&quot;Download Extension (.ZIP)&quot;</strong> above. Once downloaded to your computer, right-click <code className="bg-brand-surface px-1.5 py-0.5 rounded border border-edge-default text-brand-blue text-[11px]">applyrecall-extension.zip</code> and select <strong>&quot;Extract All...&quot;</strong>.
-              </p>
-            </div>
-
-            {/* Step 2 */}
-            <div className="p-5 rounded-btn bg-brand-soft border border-edge-default space-y-2">
-              <div className="flex items-center gap-2.5">
-                <span className="w-7 h-7 rounded-full bg-brand-blue text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-                  2
-                </span>
-                <h3 className="text-xs font-bold text-ink-primary">Navigate to Extensions</h3>
-              </div>
-              <p className="text-xs text-ink-secondary leading-relaxed pl-9">
-                Open a new tab, copy and paste <code className="bg-brand-surface px-1.5 py-0.5 rounded border border-edge-default text-brand-blue text-[11px] font-mono">{activeBrowserConfig.url}</code> into your address bar, and press Enter.
-              </p>
-            </div>
-
-            {/* Step 3 */}
-            <div className="p-5 rounded-btn bg-brand-soft border border-edge-default space-y-2">
-              <div className="flex items-center gap-2.5">
-                <span className="w-7 h-7 rounded-full bg-brand-blue text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-                  3
-                </span>
-                <h3 className="text-xs font-bold text-ink-primary">Toggle &quot;Developer mode&quot; ON</h3>
-              </div>
-              <p className="text-xs text-ink-secondary leading-relaxed pl-9">
-                Look for the <strong>&quot;Developer mode&quot;</strong> toggle in {activeBrowserConfig.toggleLocation.toLowerCase()}. Switch it to <strong>ON</strong> to reveal the unpacked loading toolbar.
-              </p>
-            </div>
-
-            {/* Step 4 */}
-            <div className="p-5 rounded-btn bg-brand-soft border border-edge-default space-y-2">
-              <div className="flex items-center gap-2.5">
-                <span className="w-7 h-7 rounded-full bg-brand-blue text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-                  4
-                </span>
-                <h3 className="text-xs font-bold text-ink-primary">Select the &quot;extension&quot; Folder</h3>
-              </div>
-              <p className="text-xs text-ink-secondary leading-relaxed pl-9">
-                Click <strong>&quot;Load unpacked&quot;</strong>, browse into your unzipped directory, and select the folder named <code className="bg-brand-surface px-1.5 py-0.5 rounded border border-edge-default text-brand-blue text-[11px]">extension</code> (the one that contains <code className="text-ink-muted text-[11px]">manifest.json</code>).
-              </p>
-            </div>
-          </div>
-
-          {/* Step 5 Banner: Pin & Sync */}
-          <div className="p-5 rounded-card bg-brand-light border border-brand-blue/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3.5">
-              <span className="w-8 h-8 rounded-full bg-brand-blue text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                5
-              </span>
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-brand-blue">
-                  Pin to Toolbar &amp; 1-Click Sync
-                </h3>
-                <p className="text-xs text-ink-secondary leading-relaxed">
-                  Click the browser puzzle piece icon (🧩) and pin ApplyRecall (📌) so it stays visible. Open the extension popup while keeping this website tab open and tap <strong>&quot;✨ Sync from Active Website Login&quot;</strong>!
+                <p className="text-[10.5px] text-ink-muted">
+                  This is where “Load unpacked” appears once Developer mode is on.
                 </p>
               </div>
             </div>
+          </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
-              <div className="px-3.5 py-2 bg-brand-surface border border-brand-blue/30 rounded-btn text-xs font-semibold text-brand-blue flex items-center gap-2 shadow-subtle">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Ready to Autofill</span>
+          {/* Final step banner */}
+          <div className="mx-5 mb-5 flex flex-col gap-3 rounded-btn border border-brand-blue/20 bg-brand-light px-4 py-3.5 sm:mx-6 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-blue text-[11px] font-bold text-white">
+                5
+              </span>
+              <div>
+                <h3 className="text-xs font-bold text-ink-primary">Pin it, then sync once</h3>
+                <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink-secondary">
+                  Use the puzzle icon to pin ApplyRecall, open the popup, and connect with the option above.
+                </p>
               </div>
             </div>
+            <span className="inline-flex flex-shrink-0 items-center gap-1.5 self-start rounded-btn border border-brand-blue/25 bg-brand-surface px-3 py-1.5 text-[11px] font-semibold text-brand-blue sm:self-auto">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+              Ready to autofill
+            </span>
           </div>
         </section>
 
-        {/* ATS & Job Board Detection Capability Grid */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-6 space-y-4">
-            <div className="flex items-center gap-2 text-ink-primary font-bold text-sm">
-              <Zap className="w-4 h-4 text-brand-blue" />
-              <span>Automatic Form Detection Across Job Platforms</span>
+        {/* ------------------------------------------------ Capabilities */}
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="flex flex-col gap-3 rounded-card border border-edge-default bg-brand-surface p-5 shadow-subtle">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-brand-blue" />
+              <h2 className="text-sm font-bold text-ink-primary">Works across job platforms</h2>
             </div>
-            <p className="text-xs text-ink-secondary leading-relaxed">
-              When you open an application on any supported ATS, the extension automatically inspects fields and surfaces your approved profile and essays:
+            <p className="text-xs leading-relaxed text-ink-secondary">
+              The extension inspects the form wherever you are and fills it with your approved profile and essays.
             </p>
-            <div className="flex flex-wrap gap-2 pt-1 text-xs">
-              {[
-                'Greenhouse ATS',
-                'Lever.co',
-                'Workday Jobs',
-                'AshbyHQ',
-                'Taleo Oracle',
-                'LinkedIn Easy Apply',
-                'Handshake Jobs',
-                'SmartRecruiters',
-                'iCIMS',
-                'Custom Career Portals'
-              ].map(ats => (
+            <div className="flex flex-wrap gap-1.5">
+              {PLATFORMS.map(platform => (
                 <span
-                  key={ats}
-                  className="px-3 py-1.5 rounded-btn bg-brand-soft border border-edge-default text-ink-primary font-medium text-xs flex items-center gap-1.5 shadow-subtle"
+                  key={platform}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-edge-default bg-brand-soft px-2.5 py-1 text-[11px] font-medium text-ink-primary"
                 >
-                  <Check className="w-3 h-3 text-status-success" />
-                  <span>{ats}</span>
+                  <Check className="h-3 w-3 text-status-success" />
+                  {platform}
                 </span>
               ))}
             </div>
           </div>
 
-          <div className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-6 space-y-4">
-            <div className="flex items-center gap-2 text-ink-primary font-bold text-sm">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Privacy &amp; On-Device Memory Security</span>
+          <div className="flex flex-col gap-3 rounded-card border border-edge-default bg-brand-surface p-5 shadow-subtle">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              <h2 className="text-sm font-bold text-ink-primary">Privacy by default</h2>
             </div>
-            <p className="text-xs text-ink-secondary leading-relaxed">
-              Your career documents, personal history, and past written answers are stored securely under bank-grade encryption:
+            <p className="text-xs leading-relaxed text-ink-secondary">
+              Your history and written answers stay tied to your account and your device token.
             </p>
-            <div className="space-y-2.5 text-xs text-ink-secondary pt-1">
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span><strong>No keystroke logging:</strong> Only scans input fields when application forms are active.</span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span><strong>Zero advertising trackers:</strong> We never sell application data or history to third parties.</span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <span><strong>Device token authentication:</strong> Revoke or regenerate your extension connection at any time.</span>
-              </div>
-            </div>
+            <ul className="space-y-2 pt-0.5">
+              {[
+                ['No keystroke logging', 'Fields are only read while an application form is on the page.'],
+                ['No ad trackers', 'Your application data is never sold or shared with third parties.'],
+                ['Revocable access', 'Regenerate your device connection at any time.']
+              ].map(([title, copy]) => (
+                <li key={title} className="flex items-start gap-2.5">
+                  <CheckCircle2 className="mt-px h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
+                  <span className="text-xs leading-relaxed text-ink-secondary">
+                    <strong className="text-ink-primary">{title}</strong> — {copy}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
-        {/* FAQ & Troubleshooting Accordion */}
-        <section className="bg-brand-surface rounded-card border border-edge-default shadow-subtle p-6 space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-edge-default">
-            <HelpCircle className="w-5 h-5 text-brand-blue" />
+        {/* ------------------------------------------------ FAQ */}
+        <section className="rounded-card border border-edge-default bg-brand-surface shadow-subtle">
+          <div className="flex items-start gap-2.5 border-b border-edge-default px-5 py-4 sm:px-6">
+            <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-btn bg-brand-light text-brand-blue">
+              <HelpCircle className="h-4 w-4" />
+            </span>
             <div>
-              <h2 className="text-base font-bold text-ink-primary">Frequently Asked Questions</h2>
-              <p className="text-xs text-ink-secondary mt-0.5">Quick answers to common extension questions</p>
+              <h2 className="text-base font-bold text-ink-primary">Questions &amp; troubleshooting</h2>
+              <p className="text-xs text-ink-secondary">The things people ask most after installing.</p>
             </div>
           </div>
 
-          <div className="space-y-3 pt-1">
+          <div className="divide-y divide-edge-default">
             {FAQS.map((faq, idx) => {
               const isOpen = openFaqIndex === idx
               return (
-                <div
-                  key={faq.question}
-                  className="rounded-btn border border-edge-default bg-brand-soft overflow-hidden transition-all"
-                >
+                <div key={faq.question}>
                   <button
                     type="button"
                     onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                    className="w-full px-4 py-3.5 text-left text-xs font-bold text-ink-primary flex items-center justify-between gap-4 hover:bg-brand-subtle transition-colors"
+                    aria-expanded={isOpen}
+                    aria-controls={`faq-panel-${idx}`}
+                    className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left transition-colors hover:bg-brand-soft sm:px-6"
                   >
-                    <span>{faq.question}</span>
+                    <span className="text-xs font-semibold text-ink-primary">{faq.question}</span>
                     {isOpen ? (
-                      <ChevronUp className="w-4 h-4 text-ink-muted flex-shrink-0" />
+                      <ChevronUp className="h-4 w-4 flex-shrink-0 text-ink-muted" />
                     ) : (
-                      <ChevronDown className="w-4 h-4 text-ink-muted flex-shrink-0" />
+                      <ChevronDown className="h-4 w-4 flex-shrink-0 text-ink-muted" />
                     )}
                   </button>
 
                   {isOpen && (
-                    <div className="px-4 pb-4 pt-1 text-xs text-ink-secondary leading-relaxed border-t border-edge-default/60 bg-brand-surface">
+                    <div
+                      id={`faq-panel-${idx}`}
+                      className="px-5 pb-4 text-xs leading-relaxed text-ink-secondary sm:px-6"
+                    >
                       {faq.answer}
                     </div>
                   )}
