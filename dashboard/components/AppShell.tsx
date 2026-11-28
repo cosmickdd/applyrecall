@@ -11,15 +11,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { token, loading, isConfigured } = useAuth();
 
   const isAuthOrLanding = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/landing' || pathname?.startsWith('/auth/');
-  const isPublicPage = isAuthOrLanding;
+  // /extension is a public install page, so signed-out visitors and crawlers can read it
+  const isPublicPage = isAuthOrLanding || pathname === '/extension';
 
   useEffect(() => {
     if (!loading && isConfigured && !token && !isPublicPage) {
-      if (pathname === '/extension') {
-        router.push('/?auth=signin&redirect=/extension');
-      } else {
-        router.push('/');
-      }
+      router.push('/');
     }
   }, [loading, isConfigured, token, isPublicPage, pathname, router]);
 

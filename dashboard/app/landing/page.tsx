@@ -1,7 +1,5 @@
-'use client'
-
-import LandingView from '@/components/LandingView'
+import { redirect } from 'next/navigation'
 
 export default function LandingRoutePage() {
-  return <LandingView />
+  redirect('/')
 }

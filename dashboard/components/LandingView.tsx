@@ -221,7 +221,11 @@ export default function LandingView({
 
       {/* Hero Section Powered by FluxPay */}
       <section id="overview" aria-label="Hero Overview">
+        <h1 className="sr-only">
+          ApplyRecall — job application autofill and answer memory for Greenhouse, Lever, Workday and Ashby
+        </h1>
         <FluxPay
+          headingLevel={2}
           brandName="ApplyRecall"
           logo={<ApplyRecallLogoMark />}
           badge="Personal Application Memory & Autonomous Job Copilot"
@@ -488,7 +492,7 @@ export default function LandingView({
               <a href="#features" className="hover:text-white transition-colors">Features</a>
               <a href="#security" className="hover:text-white transition-colors">Security</a>
               <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
-              <a href="#extension" onClick={openExtensionAuth} className="hover:text-white transition-colors">Extension</a>
+              <Link href="/extension" className="hover:text-white transition-colors">Extension</Link>
               <a href="#signin" onClick={openSignIn} className="hover:text-white transition-colors">Sign In</a>
             </div>
 

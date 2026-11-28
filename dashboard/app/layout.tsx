@@ -3,6 +3,8 @@ import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/lib/auth-context';
 import AppShell from '@/components/AppShell';
 
+const SITE_URL = 'https://applyrecall.vercel.app';
+
 export const viewport: Viewport = {
   themeColor: '#2142E7',
   width: 'device-width',
@@ -11,14 +13,15 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://applyrecall.vercel.app'),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: 'ApplyRecall — Autonomous Job Application Memory & ATS Copilot',
+    default: 'ApplyRecall — Job Application Autofill & Application Memory',
     template: '%s | ApplyRecall'
   },
   description:
-    'Apply once, remember everything. ApplyRecall autofills repetitive job applications across Greenhouse, Lever, and Workday in under 1.5s, curates your past approved essay answers, and automates 7-day follow-ups.',
+    'ApplyRecall autofills repeating job applications across Greenhouse, Lever, Workday, Ashby and Handshake in under 1.5 seconds, remembers your approved essay answers, and queues 7-day recruiter follow-ups.',
   keywords: [
+    'applyrecall',
     'job application autofill',
     'job application memory',
     'greenhouse autofill extension',
@@ -34,38 +37,35 @@ export const metadata: Metadata = {
     'career vault',
     'chrome extension for job applications'
   ],
-  authors: [{ name: 'ApplyRecall Team', url: 'https://applyrecall.vercel.app' }],
+  authors: [{ name: 'ApplyRecall Team', url: SITE_URL }],
   creator: 'ApplyRecall',
   publisher: 'ApplyRecall',
   applicationName: 'ApplyRecall',
   category: 'Productivity',
-  alternates: {
-    canonical: '/'
-  },
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://applyrecall.vercel.app',
+    url: SITE_URL,
     siteName: 'ApplyRecall',
-    title: 'ApplyRecall — Autonomous Job Application Memory & ATS Copilot',
+    title: 'ApplyRecall — Job Application Autofill & Application Memory',
     description:
-      'Apply once, remember everything. Instantly autofill job applications across Greenhouse, Lever, and Workday while curating your verified essay answers in private on-device memory.',
+      'Apply once, remember everything. Autofill job applications across Greenhouse, Lever, Workday and Ashby in under 1.5s, with your own approved answer library kept private.',
     images: [
       {
-        url: '/og-image.png',
+        url: '/og',
         width: 1200,
         height: 630,
-        alt: 'ApplyRecall — Autonomous Job Application Memory & ATS Copilot'
+        alt: 'ApplyRecall — job application autofill and answer memory'
       }
     ]
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ApplyRecall — Autonomous Job Application Memory & ATS Copilot',
+    title: 'ApplyRecall — Job Application Autofill & Application Memory',
     description:
-      'Apply once, remember everything. 1-click ATS autofill & verified answer memory on Greenhouse, Lever, and Workday.',
+      'One-click ATS autofill and verified answer memory on Greenhouse, Lever, Workday and Ashby.',
     creator: '@applyrecall',
-    images: ['/og-image.png']
+    images: ['/og']
   },
   robots: {
     index: true,
@@ -79,8 +79,8 @@ export const metadata: Metadata = {
     }
   },
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png'
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    shortcut: '/favicon.svg'
   }
 };
 
@@ -89,81 +89,83 @@ const jsonLdData = {
   '@graph': [
     {
       '@type': 'SoftwareApplication',
-      '@id': 'https://applyrecall.vercel.app/#software',
+      '@id': `${SITE_URL}/#software`,
       name: 'ApplyRecall',
+      alternateName: 'ApplyRecall job application autofill extension',
       operatingSystem: 'Windows, macOS, Linux, ChromeOS, Chromium Browsers',
       applicationCategory: 'BusinessApplication, ProductivityApplication',
       description:
-        'Personal job application memory and autonomous copilot that autofills Greenhouse, Lever, and Workday application forms in under 1.5 seconds, recalls approved essay answers, and organizes recruiter follow-ups.',
-      url: 'https://applyrecall.vercel.app',
+        'Job application autofill and application memory that fills Greenhouse, Lever, Workday, Ashby and Handshake forms in under 1.5 seconds, recalls your approved essay answers, and organizes recruiter follow-ups.',
+      url: SITE_URL,
+      installUrl: `${SITE_URL}/extension`,
       offers: {
         '@type': 'Offer',
         price: '0.00',
         priceCurrency: 'USD',
         availability: 'https://schema.org/InStock'
-      },
-      aggregateRating: {
-        '@type': 'AggregateRating',
-        ratingValue: '4.9',
-        ratingCount: '1280',
-        bestRating: '5',
-        worstRating: '1'
       }
     },
     {
       '@type': 'Organization',
-      '@id': 'https://applyrecall.vercel.app/#organization',
+      '@id': `${SITE_URL}/#organization`,
       name: 'ApplyRecall',
-      url: 'https://applyrecall.vercel.app',
-      logo: 'https://applyrecall.vercel.app/logo.png',
-      sameAs: [
-        'https://github.com/cosmickdd/applyrecall'
-      ]
+      url: SITE_URL,
+      logo: `${SITE_URL}/favicon.svg`,
+      sameAs: ['https://github.com/cosmickdd/applyrecall']
     },
     {
       '@type': 'WebSite',
-      '@id': 'https://applyrecall.vercel.app/#website',
-      url: 'https://applyrecall.vercel.app',
+      '@id': `${SITE_URL}/#website`,
+      url: SITE_URL,
       name: 'ApplyRecall',
-      description: 'Autonomous job application memory, ATS autofill copilot, and recruiter follow-up radar.',
+      description:
+        'Job application autofill, an answer library, and a follow-up radar for students and job seekers.',
       publisher: {
-        '@id': 'https://applyrecall.vercel.app/#organization'
+        '@id': `${SITE_URL}/#organization`
       }
     },
     {
       '@type': 'FAQPage',
-      '@id': 'https://applyrecall.vercel.app/#faq',
+      '@id': `${SITE_URL}/#faq`,
       mainEntity: [
         {
           '@type': 'Question',
           name: 'How does ApplyRecall autofill job applications?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'ApplyRecall uses an official Chromium extension that securely inspects ATS form fields on Greenhouse, Lever, Workday, and Handshake, matching them with your verified profile and past essay answers in under 1.5 seconds.'
+            text: 'ApplyRecall pairs with an official Chrome & Chromium extension. When you land on an application page on Greenhouse, Lever, Workday, or Handshake, ApplyRecall automatically scans the form fields and fills in your verified contact details, education, resume links, and custom essay responses in under 1.5 seconds.'
           }
         },
         {
           '@type': 'Question',
-          name: 'Is my application data encrypted and private?',
+          name: 'What is the Curated Answer Library?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Yes. ApplyRecall employs 256-bit device token authentication and zero keystroke logging. Your career documents and past written answers remain confidential in your private encrypted vault.'
+            text: 'Whenever you write a thoughtful answer to a common essay prompt (like "Why do you want to work here?" or "Describe your leadership style"), ApplyRecall saves it to your private library. When you encounter similar questions in the future, ApplyRecall automatically suggests your past approved answers so you never have to re-type them from scratch.'
           }
         },
         {
           '@type': 'Question',
-          name: 'Which browsers and job boards are supported?',
+          name: 'How does the automated recruiter follow-up radar work?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'ApplyRecall supports Google Chrome, Microsoft Edge, Brave Browser, and Arc Browser, and works on Greenhouse, Lever, Workday, Ashby, Taleo, LinkedIn Easy Apply, and Handshake.'
+            text: 'After you submit an application, ApplyRecall schedules a courteous 7-day follow-up reminder. If you have not heard back, it prepares a professionally pre-drafted check-in email ready to send with 1 click, keeping you top-of-mind with hiring teams.'
           }
         },
         {
           '@type': 'Question',
-          name: 'How does the automated follow-up reminder radar work?',
+          name: 'Is my personal career data safe and private?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'When you submit an application, ApplyRecall automatically queues a polite 7-day follow-up reminder with pre-drafted check-in emails, helping you stay at the top of recruiter shortlists.'
+            text: 'Yes, completely. ApplyRecall uses bank-grade AES-256 and SHA-256 encryption. We enforce zero keystroke logging, meaning the extension only inspects form fields when you open an application. We never sell your data or application history to recruiters, employers, or third-party brokers.'
+          }
+        },
+        {
+          '@type': 'Question',
+          name: 'Is ApplyRecall free for students and job seekers?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes! ApplyRecall is 100% free to get started. You can track unlimited applications, store all your essay answers, and use the Chrome extension with no hidden paywalls.'
           }
         }
       ]

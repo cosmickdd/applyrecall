@@ -5,8 +5,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: ['/', '/extension', '/login', '/signup'],
+        allow: ['/', '/extension'],
         disallow: [
+          '/landing',
           '/overview',
           '/applications',
           '/answers',
