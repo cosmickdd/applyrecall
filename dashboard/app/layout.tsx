@@ -2,7 +2,6 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/lib/auth-context';
 import AppShell from '@/components/AppShell';
-import GoogleAnalytics from '@/components/GoogleAnalytics';
 
 const SITE_URL = 'https://applyrecall.vercel.app';
 
@@ -175,6 +174,8 @@ const jsonLdData = {
   ]
 };
 
+const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || 'GTM-WTMKFPCX';
+
 export default function RootLayout({
   children,
 }: {
@@ -184,12 +185,20 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <script
+          async
+          src={`https://www.googletagmanager.com/gtm.js?id=${GTM_ID}`}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date());`,
+          }}
+        />
+        <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdData) }}
         />
       </head>
       <body className="bg-brand-soft min-h-screen text-ink-primary antialiased">
-        <GoogleAnalytics />
         <AuthProvider>
           <AppShell>
             {children}
