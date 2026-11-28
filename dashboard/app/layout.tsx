@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { AuthProvider } from '@/lib/auth-context';
 import AppShell from '@/components/AppShell';
+import GoogleAnalytics from '@/components/GoogleAnalytics';
 
 const SITE_URL = 'https://applyrecall.vercel.app';
 
@@ -187,6 +188,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-brand-soft min-h-screen text-ink-primary antialiased">
+        <GoogleAnalytics />
         <AuthProvider>
           <AppShell>
             {children}

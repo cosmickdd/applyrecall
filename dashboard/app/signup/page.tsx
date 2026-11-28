@@ -3,15 +3,15 @@ import LandingView from '@/components/LandingView'
 
 export const metadata: Metadata = {
   title: {
-    absolute: 'Create your ApplyRecall account'
+    absolute: 'Create your ApplyRecall account — Free Job Application Autofill'
   },
   description:
-    'Create a free ApplyRecall account to autofill job applications, save your essay answers once, and track every application you send.',
+    'Create a free ApplyRecall account to autofill job applications on Greenhouse, Lever, Workday and Ashby, save your essay answers, and track every application.',
   alternates: {
     canonical: '/signup'
   },
   robots: {
-    index: false,
+    index: true,
     follow: true
   }
 }
