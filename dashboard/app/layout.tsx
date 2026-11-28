@@ -52,9 +52,9 @@ export const metadata: Metadata = {
       'Apply once, remember everything. Autofill job applications across Greenhouse, Lever, Workday and Ashby in under 1.5s, with your own approved answer library kept private.',
     images: [
       {
-        url: '/og',
-        width: 1200,
-        height: 630,
+        url: '/og-image.png',
+        width: 1392,
+        height: 752,
         alt: 'ApplyRecall — job application autofill and answer memory'
       }
     ]
@@ -65,7 +65,7 @@ export const metadata: Metadata = {
     description:
       'One-click ATS autofill and verified answer memory on Greenhouse, Lever, Workday and Ashby.',
     creator: '@applyrecall',
-    images: ['/og']
+    images: ['/og-image.png']
   },
   robots: {
     index: true,

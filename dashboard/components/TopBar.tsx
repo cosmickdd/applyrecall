@@ -8,9 +8,12 @@ import { api } from '@/lib/api';
 interface TopBarProps {
   title?: string;
   onSearch?: (term: string) => void;
+  /** Use 2 when the page body renders its own <h1> so the document keeps a single top-level heading. */
+  headingLevel?: 1 | 2;
 }
 
-export default function TopBar({ title, onSearch }: TopBarProps) {
+export default function TopBar({ title, onSearch, headingLevel = 1 }: TopBarProps) {
+  const Heading = headingLevel === 2 ? 'h2' : 'h1';
   const [checking, setChecking] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -35,9 +38,9 @@ export default function TopBar({ title, onSearch }: TopBarProps) {
   return (
     <header className="h-16 bg-brand-surface border-b border-edge-default px-8 flex items-center justify-between sticky top-0 z-20">
       <div className="flex items-center gap-4">
-        <h1 className="text-[17px] font-semibold text-ink-primary tracking-tight">
+        <Heading className="text-[17px] font-semibold text-ink-primary tracking-tight">
           {title || 'Overview'}
-        </h1>
+        </Heading>
       </div>
 
       <div className="flex items-center gap-4">

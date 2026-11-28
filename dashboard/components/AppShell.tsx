@@ -24,7 +24,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <main className="min-h-screen">{children}</main>;
   }
 
-  if (loading) {
+  if (loading && !isPublicPage) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-screen bg-brand-soft">
         <div className="flex flex-col items-center gap-3">

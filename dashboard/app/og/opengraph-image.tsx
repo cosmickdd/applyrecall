@@ -3,7 +3,7 @@ import { ImageResponse } from 'next/og'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
-export async function GET() {
+export default async function Image() {
   return new ImageResponse(
     (
       <div
@@ -54,7 +54,7 @@ export async function GET() {
             Autofill job applications in seconds
           </div>
           <div style={{ display: 'flex', fontSize: '30px', lineHeight: 1.35, color: '#a8c4ff', maxWidth: '940px' }}>
-            One-click ATS autofill and answer memory for Greenhouse, Lever, Workday & Ashby.
+            One-click ATS autofill and answer memory for Greenhouse, Lever, Workday &amp; Ashby.
           </div>
         </div>
 

@@ -92,7 +92,7 @@ export default function ExtensionPage() {
 
   return (
     <>
-      <TopBar title="Chrome Extension" />
+      <TopBar title="Chrome Extension" headingLevel={2} />
 
       <main className="flex-1 w-full max-w-[880px] mx-auto px-5 sm:px-8 py-7 space-y-6">
         <section className="flex flex-col gap-4 rounded-container border border-edge-default bg-brand-surface p-6 shadow-subtle sm:flex-row sm:items-center sm:justify-between">

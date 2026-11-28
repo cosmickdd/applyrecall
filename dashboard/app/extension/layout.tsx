@@ -30,9 +30,9 @@ export const metadata: Metadata = {
       'Download, load unpacked, and pair the ApplyRecall extension to autofill job applications on Greenhouse, Lever, Workday and Ashby.',
     images: [
       {
-        url: '/og',
-        width: 1200,
-        height: 630,
+        url: '/og-image.png',
+        width: 1392,
+        height: 752,
         alt: 'Install the ApplyRecall browser extension'
       }
     ]
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     title: 'ApplyRecall Extension — Install & Pair Autofill',
     description:
       'Download, load unpacked, and pair the ApplyRecall extension to autofill job applications on Greenhouse, Lever, Workday and Ashby.',
-    images: ['/og']
+    images: ['/og-image.png']
   }
 }
 
